@@ -66,9 +66,9 @@ public class PlayerMinimax implements IPlayer, IAuto {
             }
         }
 
-        System.out.println("Movimiento elegido: " + mejorMovimiento);
+        /*System.out.println("Movimiento elegido: " + mejorMovimiento);
         System.out.println("Nodos visitados: " + nodesvisitats);
-        System.out.println("Nodos podados: " + nodesestalviats);
+        System.out.println("Nodos podados: " + nodesestalviats);*/
 
         return new PlayerMove(mejorMovimiento, nodesvisitats, profmax, SearchType.MINIMAX);
     }
@@ -151,13 +151,28 @@ public class PlayerMinimax implements IPlayer, IAuto {
      */
     private int evaluarEstado(HexGameStatus s) {
         nodesvisitats++;
+
+        // Si el juego ha terminado, devolvemos un valor extremo basado en el ganador.
         if (s.isGameOver()) {
             PlayerType ganador = s.GetWinner();
-            if (ganador == myColor) return MAXIM;
-            else return -MAXIM;
+            if (ganador == myColor) {
+                return MAXIM; // Victoria asegurada
+            } else {
+                return -MAXIM; // Derrota asegurada
+            }
         }
-        return HexHeuristica.evaluate(s, myColor); // Llama a tu heurística
+
+        // Crear una instancia de tu clase de heurística
+        HexHeuristica heuristica = new HexHeuristica();
+
+        // Llamar a la función de evaluación de estado definida en HexHeuristica
+        int valorHeuristico = heuristica.evaluarEstado(s);
+
+        // Devolver el valor de la heurística
+        return valorHeuristico;
     }
+
+
 
     /**
      * Aplica un movimiento y devuelve el nuevo estado del juego.

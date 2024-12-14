@@ -42,6 +42,11 @@ public class Dijkstra {
         queue.add(new Node(start, 0));
         distances[start.x][start.y] = 0;
 
+<<<<<<< HEAD
+=======
+        //System.out.println("Iniciando Dijkstra desde: " + start);
+
+>>>>>>> c3fd4fc (Tfdjssh)
         while (!queue.isEmpty()) {
             Node current = queue.poll();
             Point pos = current.position;
@@ -51,19 +56,36 @@ public class Dijkstra {
             }
             visited[pos.x][pos.y] = true;
 
+<<<<<<< HEAD
+=======
+            //System.out.println("Visitando nodo: " + pos + " con distancia acumulada: " + current.distance);
+
+>>>>>>> c3fd4fc (Tfdjssh)
             for (Point dir : directions) {
                 Point neighbor = new Point(pos.x + dir.x, pos.y + dir.y);
                 if (isValid(neighbor)) {
                     int newDist = distances[pos.x][pos.y] + 1; // Asume peso 1
+<<<<<<< HEAD
                     if (newDist < distances[neighbor.x][neighbor.y]) {
                         distances[neighbor.x][neighbor.y] = newDist;
                         queue.add(new Node(neighbor, newDist));
+=======
+                    //System.out.println("  Evaluando vecino: " + neighbor + " con nueva distancia: " + newDist);
+                    if (newDist < distances[neighbor.x][neighbor.y]) {
+                        distances[neighbor.x][neighbor.y] = newDist;
+                        queue.add(new Node(neighbor, newDist));
+                        //System.out.println("    Actualizando distancia de " + neighbor + " a " + newDist);
+>>>>>>> c3fd4fc (Tfdjssh)
                     }
                 }
             }
         }
     }
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> c3fd4fc (Tfdjssh)
     /**
      * Verifica si un nodo es válido y no visitado.
      * 
@@ -96,4 +118,8 @@ public class Dijkstra {
             this.distance = distance;
         }
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> c3fd4fc (Tfdjssh)

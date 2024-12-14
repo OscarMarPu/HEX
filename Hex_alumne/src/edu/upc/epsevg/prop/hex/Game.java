@@ -28,7 +28,11 @@ public class Game {
                 //IPlayer player1 = new HumanPlayer("Human1");
                 //IPlayer player2 = new HumanPlayer("Human");
                                 
+<<<<<<< HEAD
                 new Board(player1 , player2, 4 /*mida*/,  10/*s*/, false);
+=======
+                new Board(player1 , player2, 7 /*mida*/,  10/*s*/, false);
+>>>>>>> c3fd4fc (Tfdjssh)
              }
         });
     }

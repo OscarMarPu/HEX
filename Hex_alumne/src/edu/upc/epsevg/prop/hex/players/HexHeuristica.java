@@ -12,6 +12,43 @@ import java.util.*;
  * flexibilidad de rutas para una evaluación más completa del estado del juego.
  */
 public class HexHeuristica {
+    
+    public static int PESO_MOVILIDAD = 2;
+    public static int PESO_CONECTIVIDAD = 3;
+    public static int PESO_FLEXIBILIDAD = 2;
+    
+    public int evaluarEstado(HexGameStatus gameState, int profundidad) {
+        if (gameState.isGameOver()) {
+            return (gameState.GetWinner() == gameState.getCurrentPlayer()) ? Integer.MAX_VALUE / 2 : -Integer.MAX_VALUE / 2;
+        }
+
+        // Evaluación rápida para niveles profundos
+        if (profundidad > 3) {
+            return evaluarEstadoRapido(gameState);
+        }
+
+        // Evaluación detallada para niveles superiores
+        return evaluarEstadoDetallado(gameState);
+    }
+
+    /**
+     * Realiza una evaluación simplificada basada en distancias mínimas al objetivo.
+     *
+     * @param gameState Estado actual del juego.
+     * @return Valor de la evaluación rápida.
+     */
+    private int evaluarEstadoRapido(HexGameStatus gameState) {
+        PlayerType currentPlayer = gameState.getCurrentPlayer();
+        PlayerType opponent = (currentPlayer == PlayerType.PLAYER1) ? PlayerType.PLAYER2 : PlayerType.PLAYER1;
+
+        // Distancias mínimas
+        int distCurrent = calcularDistanciaMinima(gameState, currentPlayer);
+        int distOpponent = calcularDistanciaMinima(gameState, opponent);
+
+        // Heurística básica: Diferencia de distancias
+        return distOpponent - distCurrent;
+    }
+
 
     /**
      * Evalúa el estado del juego. Si es un estado terminal, devuelve un valor
@@ -23,7 +60,7 @@ public class HexHeuristica {
      * @param gameState Estado actual del juego.
      * @return Valor de la evaluación del estado.
      */
-    public int evaluarEstado(HexGameStatus gameState) {
+    public int evaluarEstadoDetallado(HexGameStatus gameState) {
         if (gameState.isGameOver()) {
             // Asignar valor extremo según el ganador.
             return (gameState.GetWinner() == gameState.getCurrentPlayer()) ? Integer.MAX_VALUE / 2 : -Integer.MAX_VALUE / 2;
@@ -66,15 +103,13 @@ public class HexHeuristica {
         // Añadir métricas estratégicas adicionales.
         // 1. Movilidad
         int movilidad = calcularMovilidad(gameState, currentPlayer) - calcularMovilidad(gameState, opponent);
-        score += movilidad * 2; // Peso de 2 para la movilidad.
+        score += movilidad * PESO_MOVILIDAD;
 
-        // 2. Conectividad
         int conectividad = evaluarConectividad(gameState, currentPlayer) - evaluarConectividad(gameState, opponent);
-        score += conectividad * 3; // Peso de 3 para la conectividad.
+        score += conectividad * PESO_CONECTIVIDAD;
 
-        // 3. Flexibilidad de Rutas
         int flexibilidad = evaluarFlexibilidadRutas(gameState, currentPlayer) - evaluarFlexibilidadRutas(gameState, opponent);
-        score += flexibilidad * 2; // Peso de 2 para la flexibilidad de rutas.
+        score += flexibilidad * PESO_FLEXIBILIDAD;
 
         return score;
     }

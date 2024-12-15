@@ -3,13 +3,10 @@
     <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
         <group>
-            <file>file:/home/sergicabezas/Documentos/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/players/HumanPlayer.java</file>
-            <file>file:/home/sergicabezas/Documentos/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/players/PlayerMinimax.java</file>
-            <file>file:/home/sergicabezas/Documentos/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/Board.java</file>
-            <file>file:/home/sergicabezas/Documentos/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/players/HexHeuristica.java</file>
-            <file>file:/home/sergicabezas/Documentos/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/players/Dijkstra.java</file>
-            <file>file:/home/sergicabezas/Documentos/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/players/RandomPlayer.java</file>
-            <file>file:/home/sergicabezas/Documentos/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/Game.java</file>
+            <file>file:/home/oscar-marquez/Escritorio/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/players/HexHeuristica.java</file>
+            <file>file:/home/oscar-marquez/Escritorio/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/players/PlayerMinimax.java</file>
+            <file>file:/home/oscar-marquez/Escritorio/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/Game.java</file>
+            <file>file:/home/oscar-marquez/Escritorio/HEX/Hex_alumne/src/edu/upc/epsevg/prop/hex/players/Dijkstra.java</file>
         </group>
     </open-files>
 </project-private>

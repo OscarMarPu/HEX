@@ -24,11 +24,11 @@ public class Game {
                 
                 IPlayer player2 = new H_E_X_Player(2/*GB*/);
                 
-                IPlayer player1 = new PlayerMinimax("OscarCabezas", 8);
+                IPlayer player1 = new PlayerMinimax("OscarCabezas", 4);
                 //IPlayer player1 = new HumanPlayer("Human1");
                 //IPlayer player2 = new HumanPlayer("Human");
                                 
-                new Board(player1 , player2, 4 /*mida*/,  10/*s*/, false);
+                new Board(player1 , player2, 7 /*mida*/,  10/*s*/, false);
              }
         });
     }

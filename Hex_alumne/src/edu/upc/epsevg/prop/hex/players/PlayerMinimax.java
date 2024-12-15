@@ -21,6 +21,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
     private long nodesvisitats;     // Nodos visitados
     private long nodesestalviats;   // Nodos podados
     private static final int MAXIM = 100000000;
+    private HexHeuristica heuristica;
 
     /**
      * Constructor que inicializa el jugador con la profundidad máxima.
@@ -31,6 +32,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
     public PlayerMinimax(String name, int prof) {
         this.name = name;
         this.profmax = prof;
+        this.heuristica = new HexHeuristica();
     }
 
     /**
@@ -149,27 +151,13 @@ public class PlayerMinimax implements IPlayer, IAuto {
      * @param s Estado del juego
      * @return Valor heurístico del estado
      */
-    private int evaluarEstado(HexGameStatus s) {
+     private int evaluarEstado(HexGameStatus s) {
         nodesvisitats++;
-
-        // Si el juego ha terminado, devolvemos un valor extremo basado en el ganador.
         if (s.isGameOver()) {
             PlayerType ganador = s.GetWinner();
-            if (ganador == myColor) {
-                return MAXIM; // Victoria asegurada
-            } else {
-                return -MAXIM; // Derrota asegurada
-            }
+            return (ganador == myColor) ? MAXIM : -MAXIM;
         }
-
-        // Crear una instancia de tu clase de heurística
-        HexHeuristica heuristica = new HexHeuristica();
-
-        // Llamar a la función de evaluación de estado definida en HexHeuristica
-        int valorHeuristico = heuristica.evaluarEstado(s);
-
-        // Devolver el valor de la heurística
-        return valorHeuristico;
+        return heuristica.evaluarEstado(s);
     }
 
 

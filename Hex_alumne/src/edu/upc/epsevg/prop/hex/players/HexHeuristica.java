@@ -13,10 +13,20 @@ import java.util.*;
  */
 public class HexHeuristica {
     
-    public static int PESO_MOVILIDAD = 2;
-    public static int PESO_CONECTIVIDAD = 3;
+    // Pesos para las diferentes métricas de la heurística
+    public static int PESO_MOVILIDAD = 1;
+    public static int PESO_CONECTIVIDAD = 4;
     public static int PESO_FLEXIBILIDAD = 2;
+    public static int PESO_PUENTES_VIRTUALES = 5;
+    public static int PESO_GRUPOS_AISLADOS = 10; // Nuevo peso para grupos aislados
     
+    /**
+     * Evalúa el estado actual del juego y devuelve un valor heurístico.
+     *
+     * @param gameState  Estado actual del juego.
+     * @param profundidad Profundidad actual en el árbol de búsqueda.
+     * @return Valor de la evaluación heurística.
+     */
     public int evaluarEstado(HexGameStatus gameState, int profundidad) {
         if (gameState.isGameOver()) {
             return (gameState.GetWinner() == gameState.getCurrentPlayer()) ? Integer.MAX_VALUE / 2 : -Integer.MAX_VALUE / 2;
@@ -49,16 +59,12 @@ public class HexHeuristica {
         return distOpponent - distCurrent;
     }
 
-
     /**
-     * Evalúa el estado del juego. Si es un estado terminal, devuelve un valor
-     * muy alto o muy bajo según el ganador. Si no es terminal, calcula las
-     * distancias mínimas a la victoria para el jugador actual y el oponente,
-     * así como métricas adicionales de movilidad, conectividad y flexibilidad
-     * de rutas, y devuelve una puntuación compuesta.
+     * Realiza una evaluación detallada del estado del juego, incorporando la penalización
+     * por grupos aislados.
      *
      * @param gameState Estado actual del juego.
-     * @return Valor de la evaluación del estado.
+     * @return Valor de la evaluación detallada.
      */
     public int evaluarEstadoDetallado(HexGameStatus gameState) {
         if (gameState.isGameOver()) {
@@ -105,165 +111,120 @@ public class HexHeuristica {
         int movilidad = calcularMovilidad(gameState, currentPlayer) - calcularMovilidad(gameState, opponent);
         score += movilidad * PESO_MOVILIDAD;
 
+        // 2. Conectividad
         int conectividad = evaluarConectividad(gameState, currentPlayer) - evaluarConectividad(gameState, opponent);
         score += conectividad * PESO_CONECTIVIDAD;
 
+        // 3. Flexibilidad de Rutas
         int flexibilidad = evaluarFlexibilidadRutas(gameState, currentPlayer) - evaluarFlexibilidadRutas(gameState, opponent);
         score += flexibilidad * PESO_FLEXIBILIDAD;
+
+        // 4. Puentes Virtuales
+        int puentesVirtuales = evaluarPuentesVirtuales(gameState, currentPlayer) - evaluarPuentesVirtuales(gameState, opponent);
+        score += puentesVirtuales * PESO_PUENTES_VIRTUALES;
+
+        // 5. Penalización por Grupos Aislados
+        int penalizacionAislados = penalizarGruposAislados(gameState, currentPlayer);
+        score -= penalizacionAislados * PESO_GRUPOS_AISLADOS;
+
+        // Penalizar grupos aislados del oponente (opcional)
+        int penalizacionAisladosOponente = penalizarGruposAislados(gameState, opponent);
+        score += penalizacionAisladosOponente * PESO_GRUPOS_AISLADOS;
 
         return score;
     }
 
     /**
-     * Calcula la distancia mínima hasta la victoria para un jugador dado utilizando
-     * una versión optimizada del algoritmo de Dijkstra.
+     * Identifica y penaliza los grupos de fichas aislados del jugador.
      *
-     * @param gameState Estado actual del juego.
-     * @param p         Jugador para el cual se calcula la distancia.
-     * @return Distancia mínima en "pasos" necesarias. Si no hay camino, retorna un valor grande.
+     * @param gameState     Estado actual del juego.
+     * @param currentPlayer Jugador actual.
+     * @return Número de grupos aislados encontrados.
      */
-    private int calcularDistanciaMinima(HexGameStatus gameState, PlayerType p) {
+    private int penalizarGruposAislados(HexGameStatus gameState, PlayerType currentPlayer) {
+        ArrayList<Point> fichas = obtenerFichasPropias(gameState, currentPlayer);
         int size = gameState.getSize();
-        int playerId = (p == PlayerType.PLAYER1) ? 1 : -1;
+        UnionFind uf = new UnionFind(size * size);
 
-        // Crear lista de nodos fuente según el jugador.
-        List<Point> fuentes = (p == PlayerType.PLAYER1) ? getTransitableTop(gameState, playerId) : getTransitableLeft(gameState, playerId);
-
-        // Si no hay fuentes transitables, retornar distancia muy grande.
-        if (fuentes.isEmpty()) return 999999;
-
-        // Inicializar matrices de distancia.
-        int[][] dist = new int[size][size];
-        for (int i = 0; i < size; i++) {
-            Arrays.fill(dist[i], Integer.MAX_VALUE);
-        }
-
-        // PriorityQueue optimizada para Dijkstra.
-        PriorityQueue<Node> pq = new PriorityQueue<>(Comparator.comparingInt(n -> n.distance));
-
-        // Inicializar distancias desde las fuentes.
-        for (Point f : fuentes) {
-            int cost = getCost(gameState, f.x, f.y, playerId);
-            if (cost != Integer.MAX_VALUE) {
-                dist[f.x][f.y] = cost;
-                pq.add(new Node(f.x, f.y, cost));
-            }
-        }
-
-        // Definir movimientos posibles en Hex.
-        Point[] directions = {
-            new Point(0, 1), new Point(1, 0), new Point(1, -1),
-            new Point(0, -1), new Point(-1, 0), new Point(-1, 1)
-        };
-
-        // Ejecutar Dijkstra.
-        while (!pq.isEmpty()) {
-            Node current = pq.poll();
-
-            // Ignorar nodos ya procesados con menor distancia.
-            if (current.distance > dist[current.x][current.y]) continue;
-
-            // Verificar si se ha llegado al borde contrario.
-            if ((p == PlayerType.PLAYER1 && current.x == size - 1) ||
-                (p == PlayerType.PLAYER2 && current.y == size - 1)) {
-                return current.distance;
-            }
-
-            // Explorar vecinos.
-            for (Point d : directions) {
-                int nx = current.x + d.x;
-                int ny = current.y + d.y;
-                if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
-
-                int c = getCost(gameState, nx, ny, playerId);
-                if (c == Integer.MAX_VALUE) continue; // No se puede pasar por el rival.
-
-                int newDist = dist[current.x][current.y] + c;
-                if (newDist < dist[nx][ny]) {
-                    dist[nx][ny] = newDist;
-                    pq.add(new Node(nx, ny, newDist));
-                }
-            }
-        }
-
-        // No se encontró conexión.
-        return 999999;
-    }
-
-    /**
-     * Devuelve el coste de pisar la celda (x,y) para el jugador playerId:
-     * - 0 si la celda pertenece al playerId.
-     * - 1 si la celda está vacía.
-     * - Integer.MAX_VALUE si la celda pertenece al rival (infranqueable).
-     *
-     * @param gameState Estado actual del juego.
-     * @param x         Coordenada X de la celda.
-     * @param y         Coordenada Y de la celda.
-     * @param playerId Identificador numérico del jugador.
-     * @return Costo de la celda.
-     */
-    private int getCost(HexGameStatus gameState, int x, int y, int playerId) {
-        int cell = gameState.getPos(x, y);
-        if (cell == playerId) return 0;
-        if (cell == 0) return 1;
-        // cell == -playerId => rival
-        return (cell == -playerId) ? Integer.MAX_VALUE : 1;
-    }
-
-    /**
-     * Recupera todas las fichas pertenecientes a un jugador específico.
-     *
-     * @param gameState Estado actual del juego.
-     * @param player    Jugador cuyos fichas se obtienen.
-     * @return Lista de puntos que representan las fichas del jugador.
-     */
-    private ArrayList<Point> obtenerFichasPropias(HexGameStatus gameState, PlayerType player) {
-        ArrayList<Point> fichas = new ArrayList<>();
-        int size = gameState.getSize();
-        int playerId = playerToId(player);
-
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) {
-                if (gameState.getPos(x, y) == playerId) {
-                    fichas.add(new Point(x, y));
-                }
-            }
-        }
-        return fichas;
-    }
-
-    /**
-     * Evalúa conexiones virtuales alrededor de una ficha específica para un jugador.
-     * Considera patrones que pueden favorecer o perjudicar al jugador.
-     *
-     * @param gameState Estado actual del juego.
-     * @param ficha     Ficha desde la cual se evalúan las conexiones.
-     * @param player    Jugador para el cual se evalúan las conexiones.
-     * @return Puntuación basada en las conexiones virtuales.
-     */
-    private int evaluarConexionesVirtuales(HexGameStatus gameState, Point ficha, PlayerType player) {
-        int playerId = playerToId(player);
-        // Definir direcciones únicas y relevantes (6 direcciones hexagonales).
+        // Definir direcciones posibles (6 direcciones hexagonales).
         Point[] directions = {
             new Point(1, 0), new Point(0, 1), new Point(1, -1),
             new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
         };
-        int score = 0;
 
-        for (Point d : directions) {
-            Point neighbor = new Point(ficha.x + d.x, ficha.y + d.y);
-            if (estaDentro(neighbor, gameState.getSize())) {
-                if (gameState.getPos(neighbor.x, neighbor.y) == playerId) {
-                    score += 20; // Conexión directa.
-                } else if (gameState.getPos(neighbor.x, neighbor.y) == 0) {
-                    // Verificar si hay una conexión potencial a través de celdas vacías.
-                    score += 10;
-                } else {
-                    score -= 10; // Bloqueo potencial.
+        // Unir fichas adyacentes.
+        for (Point ficha : fichas) {
+            int index1 = ficha.x * size + ficha.y;
+            for (Point d : directions) {
+                Point neighbor = new Point(ficha.x + d.x, ficha.y + d.y);
+                if (estaDentro(neighbor, size) && gameState.getPos(neighbor.x, neighbor.y) == playerToId(currentPlayer)) {
+                    int index2 = neighbor.x * size + neighbor.y;
+                    uf.union(index1, index2);
                 }
             }
         }
-        return score;
+
+        // Agrupar fichas por sus raíces en Union-Find.
+        Map<Integer, List<Point>> grupos = new HashMap<>();
+        for (Point ficha : fichas) {
+            int index = ficha.x * size + ficha.y;
+            int root = uf.find(index);
+            grupos.computeIfAbsent(root, k -> new ArrayList<>()).add(ficha);
+        }
+
+        // Determinar cuáles grupos están conectados a las fronteras del tablero.
+        Set<Integer> gruposConectados = new HashSet<>();
+        for (Map.Entry<Integer, List<Point>> entry : grupos.entrySet()) {
+            boolean conectadoSuperior = false;
+            boolean conectadoInferior = false;
+            boolean conectadoIzquierda = false;
+            boolean conectadoDerecha = false;
+
+            for (Point ficha : entry.getValue()) {
+                if (ficha.y == 0) conectadoIzquierda = true;
+                if (ficha.y == size - 1) conectadoDerecha = true;
+                if (ficha.x == 0) conectadoSuperior = true;
+                if (ficha.x == size - 1) conectadoInferior = true;
+            }
+
+            // Para PLAYER1, conectarse de superior a inferior.
+            // Para PLAYER2, conectarse de izquierda a derecha.
+            if (currentPlayer == PlayerType.PLAYER1) {
+                if (conectadoSuperior && conectadoInferior) {
+                    gruposConectados.add(entry.getKey());
+                }
+            } else { // PLAYER2
+                if (conectadoIzquierda && conectadoDerecha) {
+                    gruposConectados.add(entry.getKey());
+                }
+            }
+        }
+
+        // Cualquier grupo que no esté en gruposConectados se considera aislado.
+        int gruposAislados = 0;
+        for (Map.Entry<Integer, List<Point>> entry : grupos.entrySet()) {
+            if (!gruposConectados.contains(entry.getKey())) {
+                gruposAislados++;
+            }
+        }
+
+        return gruposAislados;
+    }
+
+    /**
+     * Crea una clave única para un puente virtual basado en las posiciones de las fichas.
+     *
+     * @param ficha1 Primera ficha del puente.
+     * @param ficha2 Segunda ficha del puente.
+     * @return Cadena única representando el puente.
+     */
+    private String crearClavePuente(Point ficha1, Point ficha2) {
+        // Ordenar las fichas para asegurar la unicidad de la clave.
+        if (ficha1.x < ficha2.x || (ficha1.x == ficha2.x && ficha1.y <= ficha2.y)) {
+            return ficha1.x + "," + ficha1.y + "-" + ficha2.x + "," + ficha2.y;
+        } else {
+            return ficha2.x + "," + ficha2.y + "-" + ficha1.x + "," + ficha1.y;
+        }
     }
 
     /**
@@ -464,55 +425,54 @@ public class HexHeuristica {
     }
 
     /**
-     * Clase interna para representar nodos en el algoritmo de Dijkstra.
+     * Evalúa y cuenta los puentes virtuales para un jugador específico.
+     *
+     * @param gameState Estado actual del juego.
+     * @param player    Jugador para el cual se evalúan los puentes virtuales.
+     * @return Número de puentes virtuales detectados.
      */
-    private static class Node {
-        int x, y, distance;
+    private int evaluarPuentesVirtuales(HexGameStatus gameState, PlayerType player) {
+        ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
+        int size = gameState.getSize();
+        int playerId = playerToId(player);
+        int puentes = 0;
 
-        Node(int x, int y, int dist) {
-            this.x = x;
-            this.y = y;
-            this.distance = dist;
+        // Definir direcciones hexagonales.
+        Point[] directions = {
+            new Point(1, 0), new Point(0, 1), new Point(1, -1),
+            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
+        };
+
+        // Utilizar un conjunto para evitar contar el mismo puente múltiples veces.
+        Set<String> puentesDetectados = new HashSet<>();
+
+        for (Point ficha : fichas) {
+            for (Point dir : directions) {
+                int nx1 = ficha.x + dir.x;
+                int ny1 = ficha.y + dir.y;
+                int nx2 = ficha.x + 2 * dir.x;
+                int ny2 = ficha.y + 2 * dir.y;
+
+                Point intermedio = new Point(nx1, ny1);
+                Point destino = new Point(nx2, ny2);
+
+                if (estaDentro(intermedio, size) && estaDentro(destino, size)) {
+                    // Verificar si el intermedio está vacío y el destino pertenece al mismo jugador.
+                    if (gameState.getPos(intermedio.x, intermedio.y) == 0 &&
+                        gameState.getPos(destino.x, destino.y) == playerId) {
+
+                        // Crear una clave única para el puente para evitar duplicados.
+                        String clavePuente = crearClavePuente(ficha, destino);
+                        if (!puentesDetectados.contains(clavePuente)) {
+                            puentesDetectados.add(clavePuente);
+                            puentes++;
+                        }
+                    }
+                }
+            }
         }
-    }
 
-    /**
-     * Clase interna para implementar la estructura de datos Union-Find.
-     * Utilizada para evaluar la conectividad de las fichas.
-     */
-    private static class UnionFind {
-        int[] parent;
-
-        /**
-         * Inicializa la estructura de Union-Find.
-         *
-         * @param size Número total de elementos.
-         */
-        UnionFind(int size) {
-            parent = new int[size];
-            for (int i = 0; i < size; i++) parent[i] = i;
-        }
-
-        /**
-         * Encuentra la raíz del elemento x con compresión de caminos.
-         *
-         * @param x Elemento a encontrar.
-         * @return Raíz del elemento.
-         */
-        int find(int x) {
-            if (parent[x] != x) parent[x] = find(parent[x]);
-            return parent[x];
-        }
-
-        /**
-         * Une los conjuntos que contienen a x e y.
-         *
-         * @param x Primer elemento.
-         * @param y Segundo elemento.
-         */
-        void union(int x, int y) {
-            parent[find(x)] = find(y);
-        }
+        return puentes;
     }
 
     /**
@@ -526,6 +486,28 @@ public class HexHeuristica {
     }
 
     /**
+     * Recupera todas las fichas pertenecientes a un jugador específico.
+     *
+     * @param gameState Estado actual del juego.
+     * @param player    Jugador cuyos fichas se obtienen.
+     * @return Lista de puntos que representan las fichas del jugador.
+     */
+    private ArrayList<Point> obtenerFichasPropias(HexGameStatus gameState, PlayerType player) {
+        ArrayList<Point> fichas = new ArrayList<>();
+        int size = gameState.getSize();
+        int playerId = playerToId(player);
+
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                if (gameState.getPos(x, y) == playerId) {
+                    fichas.add(new Point(x, y));
+                }
+            }
+        }
+        return fichas;
+    }
+
+    /**
      * Verifica si una posición está dentro de los límites del tablero.
      *
      * @param p    Punto a verificar.
@@ -534,6 +516,102 @@ public class HexHeuristica {
      */
     private boolean estaDentro(Point p, int size) {
         return p.x >= 0 && p.y >= 0 && p.x < size && p.y < size;
+    }
+
+    /**
+     * Calcula la distancia mínima hasta la victoria para un jugador dado utilizando
+     * una versión optimizada del algoritmo de Dijkstra.
+     *
+     * @param gameState Estado actual del juego.
+     * @param p         Jugador para el cual se calcula la distancia.
+     * @return Distancia mínima en "pasos" necesarias. Si no hay camino, retorna un valor grande.
+     */
+    private int calcularDistanciaMinima(HexGameStatus gameState, PlayerType p) {
+        int size = gameState.getSize();
+        int playerId = (p == PlayerType.PLAYER1) ? 1 : -1;
+
+        // Crear lista de nodos fuente según el jugador.
+        List<Point> fuentes = (p == PlayerType.PLAYER1) ? getTransitableTop(gameState, playerId) : getTransitableLeft(gameState, playerId);
+
+        // Si no hay fuentes transitables, retornar distancia muy grande.
+        if (fuentes.isEmpty()) return 999999;
+
+        // Inicializar matrices de distancia.
+        int[][] dist = new int[size][size];
+        for (int i = 0; i < size; i++) {
+            Arrays.fill(dist[i], Integer.MAX_VALUE);
+        }
+
+        // PriorityQueue optimizada para Dijkstra.
+        PriorityQueue<Node> pq = new PriorityQueue<>(Comparator.comparingInt(n -> n.distance));
+
+        // Inicializar distancias desde las fuentes.
+        for (Point f : fuentes) {
+            int cost = getCost(gameState, f.x, f.y, playerId);
+            if (cost != Integer.MAX_VALUE) {
+                dist[f.x][f.y] = cost;
+                pq.add(new Node(f.x, f.y, cost));
+            }
+        }
+
+        // Definir movimientos posibles en Hex.
+        Point[] directions = {
+            new Point(0, 1), new Point(1, 0), new Point(1, -1),
+            new Point(0, -1), new Point(-1, 0), new Point(-1, 1)
+        };
+
+        // Ejecutar Dijkstra.
+        while (!pq.isEmpty()) {
+            Node current = pq.poll();
+
+            // Ignorar nodos ya procesados con menor distancia.
+            if (current.distance > dist[current.x][current.y]) continue;
+
+            // Verificar si se ha llegado al borde contrario.
+            if ((p == PlayerType.PLAYER1 && current.x == size - 1) ||
+                (p == PlayerType.PLAYER2 && current.y == size - 1)) {
+                return current.distance;
+            }
+
+            // Explorar vecinos.
+            for (Point d : directions) {
+                int nx = current.x + d.x;
+                int ny = current.y + d.y;
+                if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+
+                int c = getCost(gameState, nx, ny, playerId);
+                if (c == Integer.MAX_VALUE) continue; // No se puede pasar por el rival.
+
+                int newDist = dist[current.x][current.y] + c;
+                if (newDist < dist[nx][ny]) {
+                    dist[nx][ny] = newDist;
+                    pq.add(new Node(nx, ny, newDist));
+                }
+            }
+        }
+
+        // No se encontró conexión.
+        return 999999;
+    }
+
+    /**
+     * Devuelve el coste de pisar la celda (x,y) para el jugador playerId:
+     * - 0 si la celda pertenece al playerId.
+     * - 1 si la celda está vacía.
+     * - Integer.MAX_VALUE si la celda pertenece al rival (infranqueable).
+     *
+     * @param gameState Estado actual del juego.
+     * @param x         Coordenada X de la celda.
+     * @param y         Coordenada Y de la celda.
+     * @param playerId Identificador numérico del jugador.
+     * @return Costo de la celda.
+     */
+    private int getCost(HexGameStatus gameState, int x, int y, int playerId) {
+        int cell = gameState.getPos(x, y);
+        if (cell == playerId) return 0;
+        if (cell == 0) return 1;
+        // cell == -playerId => rival
+        return (cell == -playerId) ? Integer.MAX_VALUE : 1;
     }
 
     /**
@@ -607,4 +685,96 @@ public class HexHeuristica {
         }
         return fuentes;
     }
+
+    /**
+     * Evalúa conexiones virtuales alrededor de una ficha específica para un jugador.
+     * Considera patrones que pueden favorecer o perjudicar al jugador.
+     *
+     * @param gameState Estado actual del juego.
+     * @param ficha     Ficha desde la cual se evalúan las conexiones.
+     * @param player    Jugador para el cual se evalúan las conexiones.
+     * @return Puntuación basada en las conexiones virtuales.
+     */
+    private int evaluarConexionesVirtuales(HexGameStatus gameState, Point ficha, PlayerType player) {
+        int playerId = playerToId(player);
+        // Definir direcciones únicas y relevantes (6 direcciones hexagonales).
+        Point[] directions = {
+            new Point(1, 0), new Point(0, 1), new Point(1, -1),
+            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
+        };
+        int score = 0;
+
+        for (Point d : directions) {
+            Point neighbor = new Point(ficha.x + d.x, ficha.y + d.y);
+            if (estaDentro(neighbor, gameState.getSize())) {
+                if (gameState.getPos(neighbor.x, neighbor.y) == playerId) {
+                    score += 20; // Conexión directa.
+                } else if (gameState.getPos(neighbor.x, neighbor.y) == 0) {
+                    // Verificar si hay una conexión potencial a través de celdas vacías.
+                    score += 10;
+                } else {
+                    score -= 10; // Bloqueo potencial.
+                }
+            }
+        }
+        return score;
+    }
+
+    /**
+     * Clase interna para implementar la estructura de datos Union-Find.
+     * Utilizada para evaluar la conectividad de las fichas.
+     */
+    private static class UnionFind {
+        int[] parent;
+
+        /**
+         * Inicializa la estructura de Union-Find.
+         *
+         * @param size Número total de elementos.
+         */
+        UnionFind(int size) {
+            parent = new int[size];
+            for (int i = 0; i < size; i++) parent[i] = i;
+        }
+
+        /**
+         * Encuentra la raíz del elemento x con compresión de caminos.
+         *
+         * @param x Elemento a encontrar.
+         * @return Raíz del elemento.
+         */
+        int find(int x) {
+            if (parent[x] != x) parent[x] = find(parent[x]);
+            return parent[x];
+        }
+
+        /**
+         * Une los conjuntos que contienen a x e y.
+         *
+         * @param x Primer elemento.
+         * @param y Segundo elemento.
+         */
+        void union(int x, int y) {
+            parent[find(x)] = find(y);
+        }
+    }
+
+    /**
+     * Clase interna para representar nodos en el algoritmo de Dijkstra.
+     */
+    private static class Node implements Comparable<Node> {
+        int x, y, distance;
+
+        Node(int x, int y, int dist) {
+            this.x = x;
+            this.y = y;
+            this.distance = dist;
+        }
+
+        @Override
+        public int compareTo(Node other) {
+            return Integer.compare(this.distance, other.distance);
+        }
+    }
+
 }

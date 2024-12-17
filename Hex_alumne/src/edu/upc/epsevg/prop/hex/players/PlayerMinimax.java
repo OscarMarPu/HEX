@@ -1,11 +1,6 @@
 package edu.upc.epsevg.prop.hex.players;
 
-import edu.upc.epsevg.prop.hex.HexGameStatus;
-import edu.upc.epsevg.prop.hex.IPlayer;
-import edu.upc.epsevg.prop.hex.IAuto;
-import edu.upc.epsevg.prop.hex.PlayerMove;
-import edu.upc.epsevg.prop.hex.PlayerType;
-import edu.upc.epsevg.prop.hex.SearchType;
+import edu.upc.epsevg.prop.hex.*;
 import java.awt.Point;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,6 +8,10 @@ import java.util.List;
 
 /**
  * Jugador que utiliza el algoritmo Minimax con poda alfa-beta y tablas de transposición.
+ * Ajustes:
+ * - Se ordenan los movimientos SOLO en la raíz para ayudar a la poda.
+ * - En niveles profundos NO se ordenan los movimientos, reduciendo el coste.
+ * - Se mantiene la perspectiva coherente del jugador actual.
  */
 public class PlayerMinimax implements IPlayer, IAuto {
 
@@ -23,13 +22,10 @@ public class PlayerMinimax implements IPlayer, IAuto {
     private long nodesestalviats;   // Nodos podados
     private static final int MAXIM = 100000000;
     private HexHeuristica heuristica;
-
-    // Tabla de transposición
     private HashMap<String, TranspositionEntry> transpositionTable;
 
     /**
      * Constructor que inicializa el jugador con la profundidad máxima.
-     * 
      * @param name Nombre del jugador
      * @param prof Profundidad máxima de exploración
      */
@@ -40,24 +36,19 @@ public class PlayerMinimax implements IPlayer, IAuto {
         this.transpositionTable = new HashMap<>();
     }
 
-    /**
-     * Determina el mejor movimiento utilizando el algoritmo Minimax con poda alfa-beta.
-     * 
-     * @param s Estado actual del juego
-     * @return Movimiento calculado
-     */
     @Override
     public PlayerMove move(HexGameStatus s) {
         nodesvisitats = 0;
         nodesestalviats = 0;
         myColor = s.getCurrentPlayer();
 
-        Point mejorMovimiento = null;
-        int mejorValor = Integer.MIN_VALUE;
         int alpha = -MAXIM;
         int beta = MAXIM;
+        Point mejorMovimiento = null;
+        int mejorValor = Integer.MIN_VALUE;
 
-        List<Point> movimientosLegales = ordenarMovimientos(s, true);
+        // Ordenamos movimientos solo en la raíz para mejorar la poda.
+        List<Point> movimientosLegales = ordenarMovimientosRaiz(s);
 
         for (Point movimiento : movimientosLegales) {
             HexGameStatus nuevoEstado = applyMove(s, movimiento);
@@ -69,7 +60,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
             alpha = Math.max(alpha, valor);
             if (beta <= alpha) {
                 nodesestalviats++;
-                break; // Poda alfa-beta
+                break; // poda alfa-beta
             }
         }
 
@@ -89,12 +80,12 @@ public class PlayerMinimax implements IPlayer, IAuto {
     private int maxValor(HexGameStatus s, int alpha, int beta, int profundidad) {
         String clave = generarClaveEstado(s);
 
+        // Tabla de transposición
         if (transpositionTable.containsKey(clave)) {
             TranspositionEntry entrada = transpositionTable.get(clave);
-            if (entrada.profundidad >= profundidad) {
-                if (entrada.alpha <= alpha && entrada.beta >= beta) {
-                    return entrada.valor;
-                }
+            // Usamos el resultado si la profundidad de la entrada es >= a la actual
+            if (entrada.profundidad >= profundidad && entrada.alpha <= alpha && entrada.beta >= beta) {
+                return entrada.valor;
             }
         }
 
@@ -103,9 +94,9 @@ public class PlayerMinimax implements IPlayer, IAuto {
         }
 
         int valor = Integer.MIN_VALUE;
-        List<Point> movimientosOrdenados = ordenarMovimientos(s, true);
+        List<Point> movimientos = getLegalMoves(s); // Sin ordenar en niveles profundos
 
-        for (Point movimiento : movimientosOrdenados) {
+        for (Point movimiento : movimientos) {
             HexGameStatus nuevoEstado = applyMove(s, movimiento);
             valor = Math.max(valor, minValor(nuevoEstado, alpha, beta, profundidad - 1));
             if (valor >= beta) {
@@ -123,12 +114,11 @@ public class PlayerMinimax implements IPlayer, IAuto {
     private int minValor(HexGameStatus s, int alpha, int beta, int profundidad) {
         String clave = generarClaveEstado(s);
 
+        // Tabla de transposición
         if (transpositionTable.containsKey(clave)) {
             TranspositionEntry entrada = transpositionTable.get(clave);
-            if (entrada.profundidad >= profundidad) {
-                if (entrada.alpha <= alpha && entrada.beta >= beta) {
-                    return entrada.valor;
-                }
+            if (entrada.profundidad >= profundidad && entrada.alpha <= alpha && entrada.beta >= beta) {
+                return entrada.valor;
             }
         }
 
@@ -137,9 +127,9 @@ public class PlayerMinimax implements IPlayer, IAuto {
         }
 
         int valor = Integer.MAX_VALUE;
-        List<Point> movimientosOrdenados = ordenarMovimientos(s, false);
+        List<Point> movimientos = getLegalMoves(s); // Sin ordenar en niveles profundos
 
-        for (Point movimiento : movimientosOrdenados) {
+        for (Point movimiento : movimientos) {
             HexGameStatus nuevoEstado = applyMove(s, movimiento);
             valor = Math.min(valor, maxValor(nuevoEstado, alpha, beta, profundidad - 1));
             if (valor <= alpha) {
@@ -154,16 +144,26 @@ public class PlayerMinimax implements IPlayer, IAuto {
         return valor;
     }
 
+    /**
+     * Evaluación del estado desde la perspectiva de 'myColor'.
+     * Si el juego ha terminado, el valor es extremo a favor o en contra.
+     * En otros casos, se usa la heurística.
+     */
     private int evaluarEstado(HexGameStatus s) {
         nodesvisitats++;
         if (s.isGameOver()) {
             PlayerType ganador = s.GetWinner();
             return (ganador == myColor) ? MAXIM : -MAXIM;
         }
+        // Profundidad 2 es un número arbitrario: la heurística interna ya adapta su complejidad
         return heuristica.evaluarEstado(s, 2);
     }
 
-    private List<Point> ordenarMovimientos(HexGameStatus s, boolean esMaximizador) {
+    /**
+     * Ordena los movimientos solo al nivel raíz, evaluando cada movimiento una sola vez.
+     * Esto ayudará a la poda alfa-beta inicial, sin incurrir en costes adicionales en niveles profundos.
+     */
+    private List<Point> ordenarMovimientosRaiz(HexGameStatus s) {
         List<Point> movimientos = getLegalMoves(s);
 
         movimientos.sort((m1, m2) -> {
@@ -171,7 +171,8 @@ public class PlayerMinimax implements IPlayer, IAuto {
             HexGameStatus estado2 = applyMove(s, m2);
             int valor1 = heuristica.evaluarEstado(estado1, 1);
             int valor2 = heuristica.evaluarEstado(estado2, 1);
-            return esMaximizador ? Integer.compare(valor2, valor1) : Integer.compare(valor1, valor2);
+            // Al inicio, somos el jugador que maximiza (myColor).
+            return Integer.compare(valor2, valor1);
         });
 
         return movimientos;

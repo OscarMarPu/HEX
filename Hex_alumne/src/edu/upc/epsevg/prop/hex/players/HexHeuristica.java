@@ -724,7 +724,7 @@ public class HexHeuristica {
      * Clase interna para implementar la estructura de datos Union-Find.
      * Utilizada para evaluar la conectividad de las fichas.
      */
-    private static class UnionFind {
+    public static class UnionFind {
         int[] parent;
 
         /**
@@ -762,7 +762,7 @@ public class HexHeuristica {
     /**
      * Clase interna para representar nodos en el algoritmo de Dijkstra.
      */
-    private static class Node implements Comparable<Node> {
+    public static class Node implements Comparable<Node> {
         int x, y, distance;
 
         Node(int x, int y, int dist) {

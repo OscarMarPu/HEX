@@ -573,35 +573,37 @@ public class PlayerMinimax implements IPlayer, IAuto {
     PlayerType opponentColor = getOpponentColor(evaluatorColor);
     double heuristic = 0;
 
-
+    Dijkstra dijkstra = new Dijkstra();
+    
     // 1. Priorizar caminos hacia la victoria
-    int distCurrent = calcularDistanciaMinima(s, evaluatorColor);
-    int distOpponent = calcularDistanciaMinima(s, opponentColor);
+    int distCurrent = dijkstra.calcularDistanciaMinima(s, evaluatorColor);
+    int distOpponent = dijkstra.calcularDistanciaMinima(s, opponentColor);
     if (distCurrent == 0) return MAXIM; // Victoria asegurada.
     if (distOpponent == 0) return -MAXIM; // Derrota asegurada.
-    heuristic += (distOpponent - distCurrent)*10; // Ponderación más alta.
-    double evaluatorScore = calculateAllPathsScoreOptimized(s, evaluatorColor);
-    double opponentScore = calculateAllPathsScoreOptimized(s, opponentColor);
-     heuristic += (evaluatorScore - opponentScore)* 3;
+    heuristic += (distOpponent*3 - distCurrent)*1; // Ponderación más alta.
+    /*double evaluatorScore = dijkstra.calculateAllPathsScoreOptimized(s, evaluatorColor);
+    double opponentScore = dijkstra.calculateAllPathsScoreOptimized(s, opponentColor);
+     heuristic += (evaluatorScore - opponentScore)* 1;*/
 
 
+    
     // 2. Evaluar conexiones virtuales aseguradas
-    int conexionesActuales = evaluarConexionesVirtualesAseguradas(s, evaluatorColor);
-    heuristic += conexionesActuales * 15; // Premiar conexiones aseguradas.
+    //int conexionesActuales = evaluarConexionesVirtualesAseguradas(s, evaluatorColor);
+    //heuristic += conexionesActuales * 15; // Premiar conexiones aseguradas.
     // 3. Penalizar redundancia en conexiones virtuales
-    int redundancia = penalizarConexionesRedundantes(s, evaluatorColor);
-    heuristic -= redundancia * 5;
-    heuristic -= penalizarEsquinasYBordes(s, evaluatorColor)*2;
+    //int redundancia = penalizarConexionesRedundantes(s, evaluatorColor);
+    //heuristic -= redundancia * 5;
+    //heuristic -= penalizarEsquinasYBordes(s, evaluatorColor)*2;
     // 4. Evaluar flexibilidad de rutas
-    int flexibilidad = evaluarFlexibilidadRutas(s, evaluatorColor) - evaluarFlexibilidadRutas(s, opponentColor);
-    heuristic += flexibilidad * 4;
-     int amenazas = evaluarConexionesAmenazadas(s, evaluatorColor);
-    heuristic -= amenazas * 20;
+    //int flexibilidad = evaluarFlexibilidadRutas(s, evaluatorColor) - evaluarFlexibilidadRutas(s, opponentColor);
+    //heuristic += flexibilidad * 4;
+     //int amenazas = evaluarConexionesAmenazadas(s, evaluatorColor);
+    //heuristic -= amenazas * 20;
     //heuristic += evaluarBloqueoProyectado(s, opponentColor) ;
     // 5. Bloqueo de caminos del oponente
-    heuristic += bloquearCaminoDelOponente(s, opponentColor) * 7;
-     int espacioDisponible = evaluarEspacioGlobal(s, evaluatorColor);
-    heuristic += espacioDisponible * 5;
+    heuristic += bloquearCaminoDelOponente(s, opponentColor) * 1;
+    //int espacioDisponible = evaluarEspacioGlobal(s, evaluatorColor);
+    //heuristic += espacioDisponible * 5;*/
     return (int) heuristic;
 }
     private int evaluarConexionesAmenazadas(HexGameStatus gameState, PlayerType player) {

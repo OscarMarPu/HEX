@@ -591,8 +591,8 @@ public class PlayerMinimax implements IPlayer, IAuto {
     //int conexionesActuales = evaluarConexionesVirtualesAseguradas(s, evaluatorColor);
     //heuristic += conexionesActuales * 15; // Premiar conexiones aseguradas.
     // 3. Penalizar redundancia en conexiones virtuales
-    //int redundancia = penalizarConexionesRedundantes(s, evaluatorColor);
-    //heuristic -= redundancia * 5;
+    int redundancia = penalizarConexionesRedundantes(s, evaluatorColor);
+    heuristic -= redundancia * 1;
     //heuristic -= penalizarEsquinasYBordes(s, evaluatorColor)*2;
     // 4. Evaluar flexibilidad de rutas
     //int flexibilidad = evaluarFlexibilidadRutas(s, evaluatorColor) - evaluarFlexibilidadRutas(s, opponentColor);

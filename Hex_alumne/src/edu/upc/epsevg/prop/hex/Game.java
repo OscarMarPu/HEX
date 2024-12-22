@@ -25,12 +25,12 @@ public class Game {
                 
                 IPlayer player2 = new H_E_X_Player(2/*GB*/);
                 //IPlayer player2 = new RandomPlayer("random");
-                PlayerMinimax player1 = new PlayerMinimax("MiJugador", 5, true);
+                PlayerMinimax player1 = new PlayerMinimax("MiJugador", 4, false);
 
                 //IPlayer player1 = new HumanPlayer("Human1");
                 //IPlayer player2 = new HumanPlayer("Human");
                                 
-                new Board(player1 , player2, 9/*mida*/,  10/*s*/, false);
+                new Board(player1 , player2, 11/*mida*/,  10/*s*/, false);
              }
         });
     }

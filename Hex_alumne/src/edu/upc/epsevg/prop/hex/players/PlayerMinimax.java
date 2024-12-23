@@ -1,6 +1,5 @@
 package edu.upc.epsevg.prop.hex.players;
 
-
 import edu.upc.epsevg.prop.hex.HexGameStatus;
 import edu.upc.epsevg.prop.hex.IPlayer;
 import edu.upc.epsevg.prop.hex.IAuto;
@@ -10,124 +9,116 @@ import edu.upc.epsevg.prop.hex.SearchType;
 import java.awt.Point;
 import java.util.*;
 
-
 /**
- * Jugador Minimax con poda alfa-beta y tabla de transposición.
+ * Implementació d'un jugador que utilitza l'algorisme Minimax amb poda alfa-beta i taules de transposició
+ * per decidir les seves jugades. Aquest jugador està optimitzat per ordenar moviments segons una heurística
+ * personalitzada.
+ * Permet l'ús de profunditat fixa o Iterative Deepening (ID). Es gestiona també una taula de transposició
+ * per accelerar la cerca i evitar explorar estats repetits innecessàriament.
+ * 
+ * @author Sergi i Oscar
  */
 public class PlayerMinimax implements IPlayer, IAuto {
-    private int depth;
+
+    // Profunditat màxima de la cerca Minimax.
+    private int profunditat;
     private String name;
     private PlayerType myColor;
+    //comptador de nodes visitats
     private long nodesVisited;
-    private long nodesPruned;
     private static final int MAXIM = 1000000;
-    private boolean debug = false;
+    //Indica si fem servir o no IDS.
     private boolean useIterativeDeepening;
-    private volatile boolean stopSearch;
-
-
-    // Direcciones hex
-    private static final int[][] HEX_DIRECTIONS = {
-        {-1,0}, {-1,1}, {0,-1}, {0,1}, {1,-1}, {1,0}
-    };
-
-
-    // Tabla de transposición
-    // Llave: hash del estado. Valor: entrada de transposición
+    private volatile boolean stopSearch;//timeout
     private Map<Long, TranspositionEntry> transpositionTable;
+    private static long[][] table;
 
-
-    // Zobrist hashing
-    private static long[][] zobristTable; 
-    // Asumiendo dos jugadores: 
-    // PLAYER1 ocupación = 1, PLAYER2 ocupación = -1
-    // Podemos mapear: PLAYER1 -> índice 0, PLAYER2 -> índice 1
-    // Para vacío no se XORea nada.
-    // zobristTable[x][y][playerIndex]
-
-
-     public PlayerMinimax(String name, int depth, boolean useIterativeDeepening) {
+    /**
+     * Constructor principal del jugador Minimax.
+     *
+     * @param name Nom del jugador.
+     * @param profunditat Profunditat màxima que s'emprarà en la cerca.
+     * @param useIterativeDeepening Indica si emprarem ID en lloc de profunditat fixa.
+     */
+    public PlayerMinimax(String name, int profunditat, boolean useIterativeDeepening) {
         this.name = name;
-        this.depth = depth;
+        this.profunditat = profunditat;
         this.useIterativeDeepening = useIterativeDeepening;
         this.transpositionTable = new HashMap<>();
-        this.stopSearch = false; // para controlar timeout
-    }
-     public PlayerMinimax(String name, int depth) {
-        this(name, depth, false);
+        this.stopSearch = false;
     }
 
+    /**
+     *
+     * @param name Nom del jugador.
+     * @param profunditat Profunditat màxima de cerca.
+     */
+    public PlayerMinimax(String name, int profunditat) {
+        this(name, profunditat, false);
+    }
 
+    /**
+     * Funció principal que es crida en el moment de fer un moviment. Retorna la jugada
+     * escollida mitjançant l'algorisme Minimax.
+     *
+     * @param s Estat actual del tauler de joc.
+     * @return La jugada seleccionada.
+     */
     @Override
     public PlayerMove move(HexGameStatus s) {
-        // Reset de contadores
         nodesVisited = 0;
-        nodesPruned = 0;
-        stopSearch = false; // comenzamos sin timeout
+        stopSearch = false;
         myColor = s.getCurrentPlayer();
 
-
-        if (zobristTable == null) {
-            initializeZobristTable(s.getSize());
+        if (table == null) {
+            initializeTable(s.getSize());
         }
-
-
-        if (debug) {
-            System.out.println("Color actual del jugador: " + myColor);
-        }
-
 
         List<Point> possibleMoves = getLegalMoves(s);
         if (possibleMoves.isEmpty()) {
-            return new PlayerMove(null, nodesVisited, depth, SearchType.MINIMAX);
+            return new PlayerMove(null, nodesVisited, profunditat, SearchType.MINIMAX);
         }
 
-
-        // Elegir si usamos ID o búsqueda normal a profundidad fija
+        // Escollim l'estratègia segons useIterativeDeepening
         if (!useIterativeDeepening) {
-            // Búsqueda normal
-            return doFixedDepthSearch(s, possibleMoves);
+            return normalminimax(s, possibleMoves);
         } else {
-            // Iterative Deepening
-            return doIterativeDeepening(s, possibleMoves);
+            return IDS(s, possibleMoves);
         }
     }
 
-
     /**
-     * Búsqueda normal Minimax a profundidad fija (sin ID).
+     * Cerca Minimax a profunditat fixa (normal, sense IDS).
+     * Ordena moviments segons la taula de transposició.
+     *
+     * @param s Estat actual del joc.
+     * @param possibleMoves Llista de moviments legals a explorar.
+     * @return El millor moviment trobat.
      */
-    private PlayerMove doFixedDepthSearch(HexGameStatus s, List<Point> possibleMoves) {
+    private PlayerMove normalminimax(HexGameStatus s, List<Point> possibleMoves) {
         Point bestMove = null;
         int bestValue = Integer.MIN_VALUE;
         int alpha = Integer.MIN_VALUE;
         int beta = MAXIM;
 
-
         long stateHash = computeHash(s);
 
-
-        // Ordenar movimientos si tenemos un bestMove de la TT
+        // Reordenar moviments
         TranspositionEntry entry = transpositionTable.get(stateHash);
         if (entry != null && entry.bestMove != null && possibleMoves.contains(entry.bestMove)) {
             possibleMoves.remove(entry.bestMove);
             possibleMoves.add(0, entry.bestMove);
         }
 
-
-        // Exploramos con profundidad 'this.depth'
+        // Explorem tots els moviments a la profunditat fixada
         for (Point move : possibleMoves) {
-            // chequeo de timeout
-            if (stopSearch) break;
-
 
             HexGameStatus newState = applyMove(s, move);
-            int value = minValue(newState, getOpponentColor(myColor), alpha, beta, depth - 1);
+            int value = minValue(newState, getOpponentColor(myColor), alpha, beta, profunditat - 1);
             if (value > bestValue) {
                 bestValue = value;
                 bestMove = move;
             }
-
 
             alpha = Math.max(alpha, bestValue);
             if (beta <= alpha || bestValue == MAXIM) {
@@ -135,40 +126,30 @@ public class PlayerMinimax implements IPlayer, IAuto {
             }
         }
 
-
         if (bestMove == null && !possibleMoves.isEmpty()) {
             bestMove = possibleMoves.get(0);
         }
 
-
-        saveToTranspositionTable(stateHash, bestValue, bestMove, depth);
-
-
-        return new PlayerMove(bestMove, nodesVisited, depth, SearchType.MINIMAX);
+        TranspositionTable(stateHash, bestValue, bestMove, profunditat);
+        return new PlayerMove(bestMove, nodesVisited, profunditat, SearchType.MINIMAX);
     }
 
-
     /**
-     * Búsqueda Iterative Deepening:
-     * - Repetimos Minimax (o A*) incrementando la profundidad desde 1 hasta 'this.depth'.
-     * - Guardamos la mejor jugada al final de cada iteración completa.
-     * - Si llega un timeout en medio, devolvemos la mejor jugada hallada hasta entonces.
+     * Cerca IDS des de profunditat 1 fins la profunditat indicada.
+     * Si arriba un timeout enmig, ens quedem amb la millor jugada trobada fins llavors.
+     *
+     * @param s Estat actual del joc.
+     * @param baseMoves Moviments legals de base (són els mateixos a cada iteració).
+     * @return El millor moviment trobat a la darrera iteració completada.
      */
-    private PlayerMove doIterativeDeepening(HexGameStatus s, List<Point> baseMoves) {
+    private PlayerMove IDS(HexGameStatus s, List<Point> baseMoves) {
         Point bestMoveOverall = null; 
-        int bestValueOverall = Integer.MIN_VALUE;
 
-
-        // Vamos incrementando la profundidad real
-        for (int currentDepth = 1; currentDepth <= this.depth; currentDepth++) {
-            if (stopSearch) break; // si hay timeout, salimos
-
-
-            // Copiamos la lista de movimientos para no alterarla globalmente en cada iteración
+        // Anem augmentant profunditat de 1 fins a la definició (profunditat)
+        for (int currentDepth = 1; currentDepth <= this.profunditat; currentDepth++) {
+            if (stopSearch) break;
+            
             List<Point> possibleMoves = new ArrayList<>(baseMoves);
-
-
-            // Re-ordenar si tenemos TT (opcional)
             long stateHash = computeHash(s);
             TranspositionEntry entry = transpositionTable.get(stateHash);
             if (entry != null && entry.bestMove != null && possibleMoves.contains(entry.bestMove)) {
@@ -176,17 +157,13 @@ public class PlayerMinimax implements IPlayer, IAuto {
                 possibleMoves.add(0, entry.bestMove);
             }
 
-
             int alpha = Integer.MIN_VALUE;
             int beta = MAXIM;
             Point bestMoveThisDepth = null;
             int bestValueThisDepth = Integer.MIN_VALUE;
 
-
-            // Minimax con depth = currentDepth
             for (Point move : possibleMoves) {
                 if (stopSearch) break;
-
 
                 HexGameStatus newState = applyMove(s, move);
                 int value = minValue(newState, getOpponentColor(myColor), alpha, beta, currentDepth - 1);
@@ -195,64 +172,58 @@ public class PlayerMinimax implements IPlayer, IAuto {
                     bestMoveThisDepth = move;
                 }
 
-
                 alpha = Math.max(alpha, bestValueThisDepth);
                 if (beta <= alpha || bestValueThisDepth == MAXIM) {
                     break;
                 }
             }
-
-
-            // Si completamos la iteración sin timeout, actualizamos best global
             if (!stopSearch) {
-                bestValueOverall = bestValueThisDepth;
                 bestMoveOverall = bestMoveThisDepth;
             }
         }
 
-
-        // Si no encontramos nada (poco probable), escogemos el primer movimiento legal
         if (bestMoveOverall == null && !baseMoves.isEmpty()) {
             bestMoveOverall = baseMoves.get(0);
         }
 
-
-        // Devolvemos el mejor movimiento de la última iteración completa
-        // La profundidad "real" final es 'this.depth' (o la última completada)
-        return new PlayerMove(bestMoveOverall, nodesVisited, depth, SearchType.MINIMAX);
+        return new PlayerMove(bestMoveOverall, nodesVisited, profunditat, SearchType.MINIMAX);
     }
 
-
+    /**
+     * Retorna el nom del jugador.
+     *
+     * @return El nom del jugador, incloent la indicació [ID] si està en mode Iterative Deepening.
+     */
     @Override
     public String getName() {
-        // Sugerimos indicar si estamos en modo ID o no
         return "Minimax(" + name + ")" + (useIterativeDeepening ? " [ID]" : "");
     }
 
-
+    /**
+     * Es crida quan es produeix un timeout i s'ha de parar la cerca immediatament.
+     */
     @Override
     public void timeout() {
-        if (debug) {
-            System.out.println("Timeout occurred -> stopSearch=true");
-        }
         stopSearch = true;
     }
 
-
-   private int maxValue(HexGameStatus s, PlayerType currentPlayer, int alpha, int beta, int depth) {
-        // Cortamos si hay timeout
-        if (stopSearch) {
-            // devolvemos alpha para no invalidar la poda
-            return alpha;
-        }
-
-
+    /**
+     * Funció de l'algorisme Minimax (part MAX). Retorna el millor valor
+     * possible per al jugador actual, explorant en profunditat fins que profunditat = 0
+     * o si s'acaba la partida.
+     *
+     * @param s Estat del joc en el moment de cridar la funció.
+     * @param currentPlayer El jugador que té el torn.
+     * @param alpha L'actual límit inferior d'utilitat (poda alfa-beta).
+     * @param beta L'actual límit superior d'utilitat (poda alfa-beta).
+     * @param profunditat Profunditat restant de la cerca.
+     * @return El millor valor (MAX) trobat per aquest node.
+     */
+    private int maxValue(HexGameStatus s, PlayerType currentPlayer, int alpha, int beta, int profunditat) {
         nodesVisited++;
-
-
         long stateHash = computeHash(s);
         TranspositionEntry ttEntry = transpositionTable.get(stateHash);
-        if (ttEntry != null && ttEntry.depth >= depth) {
+        if (ttEntry != null && ttEntry.depth >= profunditat) {
             if (ttEntry.flag == TranspositionEntry.EXACT) {
                 return ttEntry.value;
             }
@@ -267,36 +238,30 @@ public class PlayerMinimax implements IPlayer, IAuto {
             }
         }
 
-
-        if (depth == 0 || s.isGameOver()) {
+        if (profunditat == 0 || s.isGameOver()) {
             int val = evaluate(s, myColor);
-            storeTT(stateHash, depth, val, alpha, beta, null);
+            storeTT(stateHash, profunditat, val, alpha, beta, null);
             return val;
         }
-
 
         List<Point> possibleMoves = getLegalMoves(s);
         if (possibleMoves.isEmpty()) {
             int val = evaluate(s, myColor);
-            storeTT(stateHash, depth, val, alpha, beta, null);
+            storeTT(stateHash, profunditat, val, alpha, beta, null);
             return val;
         }
-
 
         if (ttEntry != null && ttEntry.bestMove != null && possibleMoves.contains(ttEntry.bestMove)) {
             possibleMoves.remove(ttEntry.bestMove);
             possibleMoves.add(0, ttEntry.bestMove);
         }
 
-
         int value = Integer.MIN_VALUE;
         Point bestMove = null;
         for (Point move : possibleMoves) {
-            if (stopSearch) break;
-
 
             HexGameStatus newState = applyMove(s, move);
-            int childValue = minValue(newState, getOpponentColor(currentPlayer), alpha, beta, depth - 1);
+            int childValue = minValue(newState, getOpponentColor(currentPlayer), alpha, beta, profunditat - 1);
             if (childValue > value) {
                 value = childValue;
                 bestMove = move;
@@ -307,25 +272,27 @@ public class PlayerMinimax implements IPlayer, IAuto {
             }
         }
 
-
-        storeTT(stateHash, depth, value, alpha, beta, bestMove);
+        storeTT(stateHash, profunditat, value, alpha, beta, bestMove);
         return value;
     }
 
-
-    private int minValue(HexGameStatus s, PlayerType currentPlayer, int alpha, int beta, int depth) {
-        if (stopSearch) {
-            // devolvemos beta para no invalidar la poda
-            return beta;
-        }
-
-
+    /**
+     * Implementa la part MIN de l'algorisme Minimax. Retorna el valor mínim possible
+     * per al jugador contrari, explorant la profunditat fins a 0 o si la partida acaba.
+     *
+     * @param s Estat del joc en el moment de cridar la funció.
+     * @param currentPlayer El jugador (color) que té el torn.
+     * @param alpha L'actual límit inferior d'utilitat (poda alfa-beta).
+     * @param beta L'actual límit superior d'utilitat (poda alfa-beta).
+     * @param profunditat Profunditat restant de la cerca.
+     * @return El millor valor (MIN) trobat per aquest node.
+     */
+    private int minValue(HexGameStatus s, PlayerType currentPlayer, int alpha, int beta, int profunditat) {
         nodesVisited++;
-
 
         long stateHash = computeHash(s);
         TranspositionEntry ttEntry = transpositionTable.get(stateHash);
-        if (ttEntry != null && ttEntry.depth >= depth) {
+        if (ttEntry != null && ttEntry.depth >= profunditat) {
             if (ttEntry.flag == TranspositionEntry.EXACT) {
                 return ttEntry.value;
             }
@@ -340,36 +307,29 @@ public class PlayerMinimax implements IPlayer, IAuto {
             }
         }
 
-
-        if (depth == 0 || s.isGameOver()) {
+        if (profunditat == 0 || s.isGameOver()) {
             int val = evaluate(s, myColor);
-            storeTT(stateHash, depth, val, alpha, beta, null);
+            storeTT(stateHash, profunditat, val, alpha, beta, null);
             return val;
         }
-
 
         List<Point> possibleMoves = getLegalMoves(s);
         if (possibleMoves.isEmpty()) {
             int val = evaluate(s, myColor);
-            storeTT(stateHash, depth, val, alpha, beta, null);
+            storeTT(stateHash, profunditat, val, alpha, beta, null);
             return val;
         }
-
 
         if (ttEntry != null && ttEntry.bestMove != null && possibleMoves.contains(ttEntry.bestMove)) {
             possibleMoves.remove(ttEntry.bestMove);
             possibleMoves.add(0, ttEntry.bestMove);
         }
 
-
         int value = Integer.MAX_VALUE;
         Point bestMove = null;
         for (Point move : possibleMoves) {
-            if (stopSearch) break;
-
-
             HexGameStatus newState = applyMove(s, move);
-            int childValue = maxValue(newState, getOpponentColor(currentPlayer), alpha, beta, depth - 1);
+            int childValue = maxValue(newState, getOpponentColor(currentPlayer), alpha, beta, profunditat - 1);
             if (childValue < value) {
                 value = childValue;
                 bestMove = move;
@@ -380,165 +340,59 @@ public class PlayerMinimax implements IPlayer, IAuto {
             }
         }
 
-
-        storeTT(stateHash, depth, value, alpha, beta, bestMove);
+        storeTT(stateHash, profunditat, value, alpha, beta, bestMove);
         return value;
     }
-    private int evaluarFlexibilidadRutas(HexGameStatus gameState, PlayerType player) {
-        int size = gameState.getSize();
-        int playerId = playerToId(player);
-        int flexibilidad = 0;
-
-
-        // Definir movimientos posibles (6 direcciones hexagonales).
-        Point[] directions = {
-            new Point(0, 1), new Point(1, 0), new Point(1, -1),
-            new Point(0, -1), new Point(-1, 0), new Point(-1, 1)
-        };
-
-
-        // Recuperar celdas de inicio y fin según el jugador.
-        List<Point> fuentes = (player == PlayerType.PLAYER1) ? getTransitableTop(gameState, playerId) : getTransitableLeft(gameState, playerId);
-        List<Point> destinos = (player == PlayerType.PLAYER1) ? getTransitableBottom(gameState, playerId) : getTransitableRight(gameState, playerId);
-
-
-        // Realizar búsquedas de rutas y contar celdas de destino alcanzables.
-        Set<Point> alcanzables = new HashSet<>();
-
-
-        for (Point fuente : fuentes) {
-            alcanzables.addAll(bfsAlcanzables(gameState, fuente, playerId, destinos));
-        }
-
-
-        flexibilidad = alcanzables.size();
-
-
-        // Convertir el número de celdas alcanzables en una puntuación.
-        // Más celdas alcanzables indican mayor flexibilidad.
-        if (flexibilidad >= size) {
-            return 30; // Alta flexibilidad.
-        } else if (flexibilidad >= size / 2) {
-            return 20; // Buena flexibilidad.
-        } else if (flexibilidad >= size / 4) {
-            return 10; // Flexibilidad moderada.
-        } else {
-            return -10; // Baja flexibilidad.
-        }
-    }
-
 
     /**
-     * Realiza una búsqueda en anchura (BFS) para determinar las celdas de destino alcanzables
-     * desde una fuente dada.
+     * Funció d'avaluació heurística: calcula un valor (heurística) per a l'estat
+     * del tauler donat, des de la perspectiva del jugador.
+     *      Si el joc ha acabat, valor màxim o mínim depenent de qui hagi guanyat.
+     *      En cas contrari, es combinen diverses heurístiques (distàncies a la victòria, 
+     *   penalització de redundància, bloqueig del camí del rival, etc.).
      *
-     * @param gameState Estado actual del juego.
-     * @param fuente    Punto de inicio de la búsqueda.
-     * @param playerId  Identificador numérico del jugador.
-     * @param destinos  Lista de puntos que representan los destinos finales.
-     * @return Conjunto de puntos alcanzables desde la fuente hacia los destinos.
+     * @param s Estat actual del joc.
+     * @param evaluatorColor Color del jugador que estem avaluant.
+     * @return Valor enter que indica la “bona posició” per al jugador actual.
      */
-    private Set<Point> bfsAlcanzables(HexGameStatus gameState, Point fuente, int playerId, List<Point> destinos) {
-        Set<Point> alcanzables = new HashSet<>();
-        Queue<Point> queue = new LinkedList<>();
-        boolean[][] visitado = new boolean[gameState.getSize()][gameState.getSize()];
-
-
-        queue.add(fuente);
-        visitado[fuente.x][fuente.y] = true;
-
-
-        // Definir movimientos posibles (6 direcciones hexagonales).
-        Point[] directions = {
-            new Point(1, 0), new Point(0, 1), new Point(1, -1),
-            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-        };
-
-
-        while (!queue.isEmpty()) {
-            Point actual = queue.poll();
-            if (destinos.contains(actual)) {
-                alcanzables.add(actual);
-                continue; // No es necesario explorar más desde aquí.
-            }
-
-
-            for (Point d : directions) {
-                int nx = actual.x + d.x;
-                int ny = actual.y + d.y;
-                Point vecino = new Point(nx, ny);
-                if (estaDentro(vecino, gameState.getSize()) && !visitado[nx][ny]) {
-                    int cell = gameState.getPos(nx, ny);
-                    if (cell == playerId || cell == 0) { // Puede mover a celdas propias o vacías.
-                        visitado[nx][ny] = true;
-                        queue.add(vecino);
-                    }
-                }
-            }
+    private int evaluate(HexGameStatus s, PlayerType evaluatorColor) {
+        if (s.isGameOver()) {
+            PlayerType winner = s.GetWinner();
+            return (winner == myColor) ? MAXIM : -MAXIM;
         }
 
+        PlayerType opponentColor = getOpponentColor(evaluatorColor);
+        double heuristic = 0;
 
-        return alcanzables;
+        // Càlcul distàncies amb un Dijkstra
+        Dijkstra dijkstra = new Dijkstra();
+        
+        int distCurrent = dijkstra.calcularDistanciaMinima(s, evaluatorColor);
+        int distOpponent = dijkstra.calcularDistanciaMinima(s, opponentColor);
+        if (distCurrent == 0) return MAXIM;
+        if (distOpponent == 0) return -MAXIM;
+        
+        // Prioritzar distància a la victòria pròpia i allunyar el rival
+        heuristic += (distOpponent * 3 - distCurrent);
+
+        // Penalitzar redundàncies i bloquejar camí del rival
+        heuristic -= penalizarConexionesRedundantes(s, evaluatorColor);
+        heuristic += bloquearCaminoDelOponente(s, opponentColor);
+        
+        return (int) heuristic;
     }
-
 
     /**
-     * Evalúa y cuenta los puentes virtuales para un jugador específico.
+     * Desa o actualitza la taula de transposició amb la informació (value, depth, flag)
+     * per l'estat hash. Fa servir poda alfa-beta per determinar el flag.
      *
-     * @param gameState Estado actual del juego.
-     * @param player    Jugador para el cual se evalúan los puentes virtuales.
-     * @return Número de puentes virtuales detectados.
+     * @param stateHash Hash de l'estat (Zobrist).
+     * @param depth Profunditat a la qual hem calculat el valor.
+     * @param value Valor del node.
+     * @param alpha Valor alfa actual.
+     * @param beta Valor beta actual.
+     * @param bestMove Millor moviment trobat en aquest node.
      */
-    private int evaluarPuentesVirtuales(HexGameStatus gameState, PlayerType player) {
-        ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
-        int size = gameState.getSize();
-        int playerId = playerToId(player);
-        int puentes = 0;
-
-
-        // Definir direcciones hexagonales.
-        Point[] directions = {
-            new Point(1, 0), new Point(0, 1), new Point(1, -1),
-            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-        };
-
-
-        // Utilizar un conjunto para evitar contar el mismo puente múltiples veces.
-        Set<String> puentesDetectados = new HashSet<>();
-
-
-        for (Point ficha : fichas) {
-            for (Point dir : directions) {
-                int nx1 = ficha.x + dir.x;
-                int ny1 = ficha.y + dir.y;
-                int nx2 = ficha.x + 2 * dir.x;
-                int ny2 = ficha.y + 2 * dir.y;
-
-
-                Point intermedio = new Point(nx1, ny1);
-                Point destino = new Point(nx2, ny2);
-
-
-                if (estaDentro(intermedio, size) && estaDentro(destino, size)) {
-                    // Verificar si el intermedio está vacío y el destino pertenece al mismo jugador.
-                    if (gameState.getPos(intermedio.x, intermedio.y) == 0 &&
-                        gameState.getPos(destino.x, destino.y) == playerId) {
-
-
-                        // Crear una clave única para el puente para evitar duplicados.
-                        String clavePuente = crearClavePuente(ficha, destino);
-                        if (!puentesDetectados.contains(clavePuente)) {
-                            puentesDetectados.add(clavePuente);
-                            puentes++;
-                        }
-                    }
-                }
-            }
-        }
-
-
-        return puentes;
-    }
     private void storeTT(long stateHash, int depth, int value, int alpha, int beta, Point bestMove) {
         int flag;
         if (value <= alpha) {
@@ -552,157 +406,31 @@ public class PlayerMinimax implements IPlayer, IAuto {
         transpositionTable.put(stateHash, entry);
     }
 
-
-    private void saveToTranspositionTable(long stateHash, int bestValue, Point bestMove, int depth) {
-        int flag = TranspositionEntry.EXACT; // Del nodo raíz guardamos exacto
-        TranspositionEntry entry = new TranspositionEntry(bestValue, depth, flag, bestMove);
+    /**
+     * Desa a la taula de transposició la informació del node arrel (flag = EXACT).
+     *
+     * @param stateHash Hash de l'estat.
+     * @param bestValue Valor calculat.
+     * @param bestMove Millor moviment trobat.
+     * @param profunditat Profunditat de la cerca.
+     */
+    private void TranspositionTable(long stateHash, int bestValue, Point bestMove, int profunditat) {
+        int flag = TranspositionEntry.EXACT;
+        TranspositionEntry entry = new TranspositionEntry(bestValue, profunditat, flag, bestMove);
         transpositionTable.put(stateHash, entry);
     }
 
-
     /**
-     * Evalúa el estado enumerando caminos optimizados.
+     * Retorna totes les fitxes pròpies presents al tauler.
+     *
+     * @param gameState Estat del joc.
+     * @param player Jugador de qui volem trobar les fitxes.
+     * @return Llista de coordenades on hi ha fitxes d'aquest jugador.
      */
-    private int evaluate(HexGameStatus s, PlayerType evaluatorColor) {
-    if (s.isGameOver()) {
-        PlayerType winner = s.GetWinner();
-        return (winner == myColor) ? MAXIM : -MAXIM;
-    }
-
-
-    PlayerType opponentColor = getOpponentColor(evaluatorColor);
-    double heuristic = 0;
-
-    Dijkstra dijkstra = new Dijkstra();
-    
-    // 1. Priorizar caminos hacia la victoria
-    int distCurrent = dijkstra.calcularDistanciaMinima(s, evaluatorColor);
-    int distOpponent = dijkstra.calcularDistanciaMinima(s, opponentColor);
-    if (distCurrent == 0) return MAXIM; // Victoria asegurada.
-    if (distOpponent == 0) return -MAXIM; // Derrota asegurada.
-    heuristic += (distOpponent*3 - distCurrent)*1; // Ponderación más alta.
-    /*double evaluatorScore = dijkstra.calculateAllPathsScoreOptimized(s, evaluatorColor);
-    double opponentScore = dijkstra.calculateAllPathsScoreOptimized(s, opponentColor);
-     heuristic += (evaluatorScore - opponentScore)* 1;*/
-
-
-    
-    // 2. Evaluar conexiones virtuales aseguradas
-    //int conexionesActuales = evaluarConexionesVirtualesAseguradas(s, evaluatorColor);
-    //heuristic += conexionesActuales * 15; // Premiar conexiones aseguradas.
-    // 3. Penalizar redundancia en conexiones virtuales
-    int redundancia = penalizarConexionesRedundantes(s, evaluatorColor);
-    heuristic -= redundancia * 1;
-    //heuristic -= penalizarEsquinasYBordes(s, evaluatorColor)*2;
-    // 4. Evaluar flexibilidad de rutas
-    //int flexibilidad = evaluarFlexibilidadRutas(s, evaluatorColor) - evaluarFlexibilidadRutas(s, opponentColor);
-    //heuristic += flexibilidad * 4;
-     //int amenazas = evaluarConexionesAmenazadas(s, evaluatorColor);
-    //heuristic -= amenazas * 20;
-    //heuristic += evaluarBloqueoProyectado(s, opponentColor) ;
-    // 5. Bloqueo de caminos del oponente
-    heuristic += bloquearCaminoDelOponente(s, opponentColor) * 1;
-    //int espacioDisponible = evaluarEspacioGlobal(s, evaluatorColor);
-    //heuristic += espacioDisponible * 5;*/
-    return (int) heuristic;
-}
-    private int evaluarConexionesAmenazadas(HexGameStatus gameState, PlayerType player) {
-    int size = gameState.getSize();
-    int playerId = playerToId(player);
-    int amenazas = 0;
-
-
-    // Definir direcciones hexagonales
-    Point[] directions = {
-        new Point(1, 0), new Point(0, 1), new Point(1, -1),
-        new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-    };
-
-
-    ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
-
-
-    for (Point ficha : fichas) {
-        for (Point d : directions) {
-            Point vecino = new Point(ficha.x + d.x, ficha.y + d.y);
-            if (estaDentro(vecino, size) && gameState.getPos(vecino.x, vecino.y) == 0) {
-                // Si una celda vacía conecta con el borde y está cerca del oponente
-                if (esConexionCritica(gameState, vecino, player)) {
-                    amenazas += 1;
-                }
-            }
-        }
-    }
-
-
-    return amenazas;
-}
-
-
-private boolean esConexionCritica(HexGameStatus gameState, Point celda, PlayerType player) {
-    int playerId = playerToId(player);
-    int opponentId = -playerId;
-
-
-    // Verificar si la celda está cerca de un borde crítico
-    boolean conectaLateral = (player == PlayerType.PLAYER1 && (celda.x == 0 || celda.x == gameState.getSize() - 1)) ||
-                             (player == PlayerType.PLAYER2 && (celda.y == 0 || celda.y == gameState.getSize() - 1));
-
-
-    // Verificar si está cerca de una ficha del oponente
-    for (int[] d : HEX_DIRECTIONS) {
-        Point vecino = new Point(celda.x + d[0], celda.y + d[1]);
-        if (estaDentro(vecino, gameState.getSize()) && gameState.getPos(vecino.x, vecino.y) == opponentId) {
-            return conectaLateral;
-        }
-    }
-
-
-    return false;
-}
-
-
-    private int penalizarEsquinasYBordes(HexGameStatus gameState, PlayerType player) {
-    int penalizacion = 0;
-    int size = gameState.getSize();
-
-
-    // Definir las esquinas del tablero
-    List<Point> esquinas = Arrays.asList(
-        new Point(0, 0),
-        new Point(0, size - 1),
-        new Point(size - 1, 0),
-        new Point(size - 1, size - 1)
-    );
-
-
-    // Evaluar las posiciones de las fichas propias
-    ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
-    for (Point ficha : fichas) {
-        // Penalizar si está en una esquina
-        if (esquinas.contains(ficha)) {
-            penalizacion += 50; // Penalización alta para esquinas
-        }
-
-
-        // Penalizar si está en los bordes
-        if (ficha.x == 0 || ficha.x == size - 1 || ficha.y == 0 || ficha.y == size - 1) {
-            penalizacion += 10; // Penalización más baja para bordes
-        }
-    }
-
-
-    return penalizacion;
-}
-
-
-
-
-     private ArrayList<Point> obtenerFichasPropias(HexGameStatus gameState, PlayerType player) {
+    private ArrayList<Point> obtenerFichasPropias(HexGameStatus gameState, PlayerType player) {
         ArrayList<Point> fichas = new ArrayList<>();
         int size = gameState.getSize();
         int playerId = playerToId(player);
-
 
         for (int x = 0; x < size; x++) {
             for (int y = 0; y < size; y++) {
@@ -713,102 +441,26 @@ private boolean esConexionCritica(HexGameStatus gameState, Point celda, PlayerTy
         }
         return fichas;
     }
-      private int penalizarGruposAislados(HexGameStatus gameState, PlayerType currentPlayer) {
-        ArrayList<Point> fichas = obtenerFichasPropias(gameState, currentPlayer);
-        int size = gameState.getSize();
-        HexHeuristica.UnionFind uf = new HexHeuristica.UnionFind(size * size);
 
-
-        // Definir direcciones posibles (6 direcciones hexagonales).
-        Point[] directions = {
-            new Point(1, 0), new Point(0, 1), new Point(1, -1),
-            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-        };
-
-
-        // Unir fichas adyacentes.
-        for (Point ficha : fichas) {
-            int index1 = ficha.x * size + ficha.y;
-            for (Point d : directions) {
-                Point neighbor = new Point(ficha.x + d.x, ficha.y + d.y);
-                if (estaDentro(neighbor, size) && gameState.getPos(neighbor.x, neighbor.y) == playerToId(currentPlayer)) {
-                    int index2 = neighbor.x * size + neighbor.y;
-                    uf.union(index1, index2);
-                }
-            }
-        }
-
-
-        // Agrupar fichas por sus raíces en Union-Find.
-        Map<Integer, List<Point>> grupos = new HashMap<>();
-        for (Point ficha : fichas) {
-            int index = ficha.x * size + ficha.y;
-            int root = uf.find(index);
-            grupos.computeIfAbsent(root, k -> new ArrayList<>()).add(ficha);
-        }
-
-
-        // Determinar cuáles grupos están conectados a las fronteras del tablero.
-        Set<Integer> gruposConectados = new HashSet<>();
-        for (Map.Entry<Integer, List<Point>> entry : grupos.entrySet()) {
-            boolean conectadoSuperior = false;
-            boolean conectadoInferior = false;
-            boolean conectadoIzquierda = false;
-            boolean conectadoDerecha = false;
-
-
-            for (Point ficha : entry.getValue()) {
-                if (ficha.y == 0) conectadoIzquierda = true;
-                if (ficha.y == size - 1) conectadoDerecha = true;
-                if (ficha.x == 0) conectadoSuperior = true;
-                if (ficha.x == size - 1) conectadoInferior = true;
-            }
-
-
-            // Para PLAYER1, conectarse de superior a inferior.
-            // Para PLAYER2, conectarse de izquierda a derecha.
-            if (currentPlayer == PlayerType.PLAYER1) {
-                if (conectadoSuperior && conectadoInferior) {
-                    gruposConectados.add(entry.getKey());
-                }
-            } else { // PLAYER2
-                if (conectadoIzquierda && conectadoDerecha) {
-                    gruposConectados.add(entry.getKey());
-                }
-            }
-        }
-
-
-        // Cualquier grupo que no esté en gruposConectados se considera aislado.
-        int gruposAislados = 0;
-        for (Map.Entry<Integer, List<Point>> entry : grupos.entrySet()) {
-            if (!gruposConectados.contains(entry.getKey())) {
-                gruposAislados++;
-            }
-        }
-
-
-        return gruposAislados;
-    }
-       private String crearClavePuente(Point ficha1, Point ficha2) {
-        // Ordenar las fichas para asegurar la unicidad de la clave.
-        if (ficha1.x < ficha2.x || (ficha1.x == ficha2.x && ficha1.y <= ficha2.y)) {
-            return ficha1.x + "," + ficha1.y + "-" + ficha2.x + "," + ficha2.y;
-        } else {
-            return ficha2.x + "," + ficha2.y + "-" + ficha1.x + "," + ficha1.y;
-        }
-    }
     /**
-     * Verifica si una posición está dentro de los límites del tablero.
+     * Verifica si una posició està dins dels límits del tauler.
      *
-     * @param p    Punto a verificar.
-     * @param size Tamaño del tablero.
-     * @return Verdadero si está dentro, falso en caso contrario.
+     * @param p Punt (x,y) a verificar.
+     * @param size Mida del tauler (n x n).
+     * @return Cert si està dins, fals si està fora.
      */
     private boolean estaDentro(Point p, int size) {
         return p.x >= 0 && p.y >= 0 && p.x < size && p.y < size;
     }
-private List<Point> getTransitableTop(HexGameStatus gameState, int playerId) {
+
+    /**
+     * Retorna les celes transitables a la part superior.
+     *
+     * @param gameState Estat del joc.
+     * @param playerId id del jugador.
+     * @return Llista de punts transitables que comencen a la fila superior.
+     */
+    private List<Point> getTransitableTop(HexGameStatus gameState, int playerId) {
         List<Point> fuentes = new ArrayList<>();
         int size = gameState.getSize();
         for (int y = 0; y < size; y++) {
@@ -818,126 +470,59 @@ private List<Point> getTransitableTop(HexGameStatus gameState, int playerId) {
         }
         return fuentes;
     }
- private List<Point> getTransitableBottom(HexGameStatus gameState, int playerId) {
-        List<Point> fuentes = new ArrayList<>();
-        int size = gameState.getSize();
-        for (int y = 0; y < size; y++) {
-            if (gameState.getPos(size - 1, y) != -playerId) {
-                fuentes.add(new Point(size - 1, y));
+
+    /**
+     * Penalitza situacions on les fitxes d'un jugador estan connectades de forma
+     * redundat per múltiples enllaços.
+     *
+     * @param gameState Estat del joc.
+     * @param player Jugador a qui penalitzem.
+     * @return Nombre de redundàncies detectades.
+     */
+    private int penalizarConexionesRedundantes(HexGameStatus gameState, PlayerType player) {
+        ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
+        int redundantes = 0;
+
+        for (Point ficha : fichas) {
+            if (movimientoRedundante(gameState, ficha, player)) {
+                redundantes++;
             }
         }
-        return fuentes;
+        return redundantes;
     }
 
-
     /**
-     * Recupera las celdas transitables desde la parte derecha del tablero para PLAYER2.
+     * Comprova si una fitxa concreta es troba connectada a més de 3 fitxes del mateix
+     * jugador, considerant-ho "redundant".
      *
-     * @param gameState Estado actual del juego.
-     * @param playerId Identificador numérico del jugador.
-     * @return Lista de puntos transitables.
+     * @param gameState Estat del joc.
+     * @param ficha Punt (x,y) de la fitxa.
+     * @param player Jugador de la fitxa.
+     * @return Cert si té més de 3 connexions directes amb fitxes del mateix color.
      */
-    private List<Point> getTransitableRight(HexGameStatus gameState, int playerId) {
-        List<Point> fuentes = new ArrayList<>();
-        int size = gameState.getSize();
-        for (int x = 0; x < size; x++) {
-            if (gameState.getPos(x, size - 1) != -playerId) {
-                fuentes.add(new Point(x, size - 1));
+    private boolean movimientoRedundante(HexGameStatus gameState, Point ficha, PlayerType player) {
+        int playerId = playerToId(player);
+        Point[] directions = {
+            new Point(1, 0), new Point(0, 1), new Point(1, -1),
+            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
+        };
+
+        int conexiones = 0;
+        for (Point d : directions) {
+            Point vecino = new Point(ficha.x + d.x, ficha.y + d.y);
+            if (estaDentro(vecino, gameState.getSize()) && gameState.getPos(vecino.x, vecino.y) == playerId) {
+                conexiones++;
             }
         }
-        return fuentes;
+        return conexiones > 3;
     }
-
 
     /**
-     * Evalúa conexiones virtuales alrededor de una ficha específica para un jugador.
-     * Considera patrones que pueden favorecer o perjudicar al jugador.
+     * Recupera les celes transitables des de la part esquerra del tauler.
      *
-     * @param gameState Estado actual del juego.
-     * @param ficha     Ficha desde la cual se evalúan las conexiones.
-     * @param player    Jugador para el cual se evalúan las conexiones.
-     * @return Puntuación basada en las conexiones virtuales.
-     */
-   private int evaluarConexionesVirtualesAseguradas(HexGameStatus gameState, PlayerType player) {
-    int aseguradas = 0;
-    ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
-
-
-    for (Point ficha : fichas) {
-        if (conexionesVirtualesAseguradas(gameState, ficha, player)) {
-            aseguradas++;
-        }
-    }
-
-
-    return aseguradas;
-}
-
-
-private boolean conexionesVirtualesAseguradas(HexGameStatus gameState, Point ficha, PlayerType player) {
-    int playerId = playerToId(player);
-    Point[] directions = {
-        new Point(1, 0), new Point(0, 1), new Point(1, -1),
-        new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-    };
-
-
-    int conexiones = 0;
-    for (Point d : directions) {
-        Point vecino = new Point(ficha.x + d.x, ficha.y + d.y);
-        if (estaDentro(vecino, gameState.getSize()) && gameState.getPos(vecino.x, vecino.y) == playerId) {
-            conexiones++;
-        }
-    }
-
-
-    // Si la ficha tiene dos o más conexiones, consideramos que está asegurada.
-    return conexiones >= 2;
-}
-private int penalizarConexionesRedundantes(HexGameStatus gameState, PlayerType player) {
-    ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
-    int redundantes = 0;
-
-
-    for (Point ficha : fichas) {
-        if (movimientoRedundante(gameState, ficha, player)) {
-            redundantes++;
-        }
-    }
-
-
-    return redundantes;
-}
-
-
-private boolean movimientoRedundante(HexGameStatus gameState, Point ficha, PlayerType player) {
-    int playerId = playerToId(player);
-    Point[] directions = {
-        new Point(1, 0), new Point(0, 1), new Point(1, -1),
-        new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-    };
-
-
-    int conexiones = 0;
-    for (Point d : directions) {
-        Point vecino = new Point(ficha.x + d.x, ficha.y + d.y);
-        if (estaDentro(vecino, gameState.getSize()) && gameState.getPos(vecino.x, vecino.y) == playerId) {
-            conexiones++;
-        }
-    }
-
-
-    // Penaliza fichas con más de 3 conexiones, ya que son redundantes.
-    return conexiones > 3;
-}
-
-
-    /**
-     * Recupera las celdas transitables desde la parte izquierda del tablero para PLAYER2.
-     *
-     * @param gameState Estado actual del juego.
-     * @param playerId Identificador numérico del jugador.
-     * @return Lista de puntos transitables.
+     * @param gameState Estat actual del joc.
+     * @param playerId Identificador numèric del jugador (1 o -1).
+     * @return Llista de punts transitables.
      */
     private List<Point> getTransitableLeft(HexGameStatus gameState, int playerId) {
         List<Point> fuentes = new ArrayList<>();
@@ -949,655 +534,237 @@ private boolean movimientoRedundante(HexGameStatus gameState, Point ficha, Playe
         }
         return fuentes;
     }
-    private int evaluarEspacioGlobal(HexGameStatus gameState, PlayerType player) {
-    List<Point> legalMoves = getLegalMoves(gameState);
-    int maxEspacio = 0;
 
-
-    for (Point move : legalMoves) {
-        int espacio = evaluarEspacioDisponible(gameState, move, player);
-        maxEspacio = Math.max(maxEspacio, espacio);
-    }
-
-
-    return maxEspacio;
-}
     /**
-     * Calcula la distancia mínima hasta la victoria para un jugador dado utilizando
-     * una versión optimizada del algoritmo de Dijkstra.
+     * Calcula la distància mínima fins a la victòria per a un jugador, utilitzant
+     * una versió optimitzada de Dijkstra.
      *
-     * @param gameState Estado actual del juego.
-     * @param p         Jugador para el cual se calcula la distancia.
-     * @return Distancia mínima en "pasos" necesarias. Si no hay camino, retorna un valor grande.
+     * @param gameState Estat actual del joc.
+     * @param p Jugador de qui volem la distància a la seva condició de victòria.
+     * @return Distància mínima en "caselles" per connectar el seu camí. Si no hi ha camí, valor gran (999999).
      */
     private int calcularDistanciaMinima(HexGameStatus gameState, PlayerType p) {
         int size = gameState.getSize();
         int playerId = (p == PlayerType.PLAYER1) ? 1 : -1;
 
+        List<Point> fuentes = (p == PlayerType.PLAYER1)
+                            ? getTransitableTop(gameState, playerId)
+                            : getTransitableLeft(gameState, playerId);
 
-        // Crear lista de nodos fuente según el jugador.
-        List<Point> fuentes = (p == PlayerType.PLAYER1) ? getTransitableTop(gameState, playerId) : getTransitableLeft(gameState, playerId);
-
-
-        // Si no hay fuentes transitables, retornar distancia muy grande.
         if (fuentes.isEmpty()) return 999999;
 
-
-        // Inicializar matrices de distancia.
         int[][] dist = new int[size][size];
         for (int i = 0; i < size; i++) {
             Arrays.fill(dist[i], Integer.MAX_VALUE);
         }
 
+        PriorityQueue<Node> pq = new PriorityQueue<>(Comparator.comparingInt(n -> n.distance));
 
-        // PriorityQueue optimizada para Dijkstra.
-        PriorityQueue<HexHeuristica.Node> pq = new PriorityQueue<>(Comparator.comparingInt(n -> n.distance));
-
-
-        // Inicializar distancias desde las fuentes.
         for (Point f : fuentes) {
             int cost = getCost(gameState, f.x, f.y, playerId);
             if (cost != Integer.MAX_VALUE) {
                 dist[f.x][f.y] = cost;
-                pq.add(new HexHeuristica.Node(f.x, f.y, cost));
+                pq.add(new Node(f.x, f.y, cost));
             }
         }
 
-
-        // Definir movimientos posibles en Hex.
+        // Moviments hexagonals bàsics
         Point[] directions = {
             new Point(0, 1), new Point(1, 0), new Point(1, -1),
             new Point(0, -1), new Point(-1, 0), new Point(-1, 1)
         };
 
-
-        // Ejecutar Dijkstra.
         while (!pq.isEmpty()) {
-            HexHeuristica.Node current = pq.poll();
-
-
-            // Ignorar nodos ya procesados con menor distancia.
+            Node current = pq.poll();
             if (current.distance > dist[current.x][current.y]) continue;
 
-
-            // Verificar si se ha llegado al borde contrario.
             if ((p == PlayerType.PLAYER1 && current.x == size - 1) ||
                 (p == PlayerType.PLAYER2 && current.y == size - 1)) {
                 return current.distance;
             }
 
-
-            // Explorar vecinos.
             for (Point d : directions) {
                 int nx = current.x + d.x;
                 int ny = current.y + d.y;
                 if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
 
-
                 int c = getCost(gameState, nx, ny, playerId);
-                if (c == Integer.MAX_VALUE) continue; // No se puede pasar por el rival.
-
+                if (c == Integer.MAX_VALUE) continue;
 
                 int newDist = dist[current.x][current.y] + c;
                 if (newDist < dist[nx][ny]) {
                     dist[nx][ny] = newDist;
-                    pq.add(new HexHeuristica.Node(nx, ny, newDist));
+                    pq.add(new Node(nx, ny, newDist));
                 }
             }
         }
-
-
-        // No se encontró conexión.
         return 999999;
     }
+
+    /**
+     * Determina el cost d'avançar a la posició (x,y), depenent de si la casella
+     * és del jugador, està buida o és de l'oponent.
+     *
+     * @param gameState Estat actual del joc.
+     * @param x Coordenada x de la casella.
+     * @param y Coordenada y de la casella.
+     * @param playerId 1 per a PLAYER1 o -1 per a PLAYER2.
+     * @return 0 si la casella és del jugador, 1 si és buida, Integer.MAX_VALUE si és de l'oponent.
+     */
     private int getCost(HexGameStatus gameState, int x, int y, int playerId) {
         int cell = gameState.getPos(x, y);
         if (cell == playerId) return 0;
         if (cell == 0) return 1;
-        // cell == -playerId => rival
         return (cell == -playerId) ? Integer.MAX_VALUE : 1;
     }
-    
-    private double calculateAllPathsScoreOptimized(HexGameStatus s, PlayerType color) {
-        List<List<Point>> paths = findAllPathsOptimized(s, color);
-        double score = 0.0;
-            score = paths.size();
-        return score;
-    }
-     private int bloquearCaminoDelOponente(HexGameStatus gameState, PlayerType opponent) {
+
+    /**
+     * Afegeix penalització si el rival ja té un camí curt cap a la victòria.
+     * Com més curt sigui el seu camí, més gran la penalització.
+     *
+     * @param gameState Estat actual del joc.
+     * @param opponent Jugador rival.
+     * @return Un valor negatiu proporcionalment més gran si la distància del rival és més petita.
+     */
+    private int bloquearCaminoDelOponente(HexGameStatus gameState, PlayerType opponent) {
         int distOpponent = calcularDistanciaMinima(gameState, opponent);
         if (distOpponent < 999999) {
-            // Penalización inversamente proporcional a la distancia del oponente.
-            // Cuanto menor sea la distancia, mayor la penalización.
-            return -(1000 / (distOpponent + 1)); // +1 para evitar división por cero.
+            return -(1000 / (distOpponent + 1)); //+1 per evitar dividir entre 0
         }
         return 0;
     }
 
-
     /**
-     * Calcula la movilidad de un jugador, es decir, la cantidad de celdas vacías adyacentes
-     * a las fichas del jugador. Una mayor movilidad indica una mayor flexibilidad en las
-     * opciones de movimiento.
+     * Converteix un PlayerType al seu id numèric (1 o -1).
      *
-     * @param gameState Estado actual del juego.
-     * @param player    Jugador para el cual se calcula la movilidad.
-     * @return Número total de celdas vacías adyacentes a las fichas del jugador.
+     * @param player El color del jugador.
+     * @return 1 si és PLAYER1, -1 si és PLAYER2.
      */
-    private int calcularMovilidad(HexGameStatus gameState, PlayerType player) {
-        ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
-        int movilidad = 0;
-        int size = gameState.getSize();
-
-
-        // Definir direcciones posibles (6 direcciones hexagonales).
-        Point[] directions = {
-            new Point(1, 0), new Point(0, 1), new Point(1, -1),
-            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-        };
-
-
-        // Utilizar un conjunto para evitar contar la misma celda vacía múltiples veces.
-        Set<Point> celdasVacias = new HashSet<>();
-        for (Point ficha : fichas) {
-            for (Point d : directions) {
-                Point neighbor = new Point(ficha.x + d.x, ficha.y + d.y);
-                if (estaDentro(neighbor, size) && gameState.getPos(neighbor.x, neighbor.y) == 0) {
-                    celdasVacias.add(neighbor);
-                }
-            }
-        }
-
-
-        movilidad = celdasVacias.size();
-        return movilidad;
-    }
- private int playerToId(PlayerType player) {
+    private int playerToId(PlayerType player) {
         return (player == PlayerType.PLAYER1) ? 1 : -1;
     }
+
     /**
-     * Evalúa la conectividad de un jugador, es decir, cuántas agrupaciones conectadas
-     * de fichas tiene el jugador. Menos agrupaciones indican una mejor conectividad.
+     * Retorna el color contrari (PLAYER1 -> PLAYER2, i viceversa).
      *
-     * @param gameState Estado actual del juego.
-     * @param player    Jugador para el cual se evalúa la conectividad.
-     * @return Puntuación basada en la conectividad. Menos agrupaciones resultan en una mayor puntuación.
+     * @param color El color actual.
+     * @return El color oposat.
      */
-    private int evaluarConectividad(HexGameStatus gameState, PlayerType player) {
-        ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
-        int size = gameState.getSize();
-        HexHeuristica.UnionFind uf = new HexHeuristica.UnionFind(size * size);
-
-
-        // Definir direcciones posibles (6 direcciones hexagonales).
-        Point[] directions = {
-            new Point(1, 0), new Point(0, 1), new Point(1, -1),
-            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-        };
-
-
-        // Unir fichas adyacentes.
-        for (Point ficha : fichas) {
-            int index1 = ficha.x * size + ficha.y;
-            for (Point d : directions) {
-                Point neighbor = new Point(ficha.x + d.x, ficha.y + d.y);
-                if (estaDentro(neighbor, size) && gameState.getPos(neighbor.x, neighbor.y) == playerToId(player)) {
-                    int index2 = neighbor.x * size + neighbor.y;
-                    uf.union(index1, index2);
-                }
-            }
-        }
-
-
-        // Contar el número de grupos conectados.
-        Set<Integer> grupos = new HashSet<>();
-        for (Point ficha : fichas) {
-            int index = ficha.x * size + ficha.y;
-            grupos.add(uf.find(index));
-        }
-
-
-        // Menos grupos indican mejor conectividad.
-        // Convertimos el número de grupos en una puntuación donde menos grupos son mejores.
-        int numeroGrupos = grupos.size();
-        if (numeroGrupos == 1) {
-            return 30; // Excelente conectividad.
-        } else if (numeroGrupos <= 3) {
-            return 20; // Buena conectividad.
-        } else if (numeroGrupos <= 5) {
-            return 10; // Conectividad aceptable.
-        } else {
-            return -10; // Pobre conectividad.
-        }
-    }
-    private List<List<Point>> findAllPathsOptimized(HexGameStatus s, PlayerType color) {
-        int size = s.getSize();
-        int[] nodes = getVirtualNodes(color, size);
-        int startNode = nodes[0];
-        int endNode = nodes[1];
-
-
-        // Construir grafo
-        List<List<Integer>> graph = buildGraphForPaths(s, color);
-
-
-        // Calcular distMin con Dijkstra
-        int distMin = calculateShortestDistanceDijkstra(graph, startNode, endNode);
-        if (distMin == Integer.MAX_VALUE) {
-            return new ArrayList<>();
-        }
-        int limitDist = distMin;
-
-
-        // Filtrar grafo
-        filterGraph(graph, startNode, endNode);
-
-
-        List<List<Integer>> allPaths = new ArrayList<>();
-        Set<Integer> visited = new HashSet<>();
-        List<Integer> currentPath = new ArrayList<>();
-
-
-        findAllPathsRecursiveOptimized(graph, startNode, endNode, visited, currentPath, allPaths, limitDist, size);
-
-
-        return convertPathsToPoints(allPaths, size);
-    }
-
-
-    private void findAllPathsRecursiveOptimized(List<List<Integer>> graph, int current, int endNode,
-                                                Set<Integer> visited, List<Integer> currentPath,
-                                                List<List<Integer>> allPaths, int limitDist, int size) {
-        final int MAX_PATHS = 10000; // Evitar explotar
-        if (allPaths.size() >= MAX_PATHS) return;
-
-
-        if (current == endNode) {
-            List<Integer> path = new ArrayList<>(currentPath);
-            path.add(current);
-            allPaths.add(path);
-            return;
-        }
-
-
-        if (currentPath.size() >= limitDist) return;
-
-
-        visited.add(current);
-        currentPath.add(current);
-
-
-        for (int neigh : graph.get(current)) {
-            if (!visited.contains(neigh)) {
-                findAllPathsRecursiveOptimized(graph, neigh, endNode, visited, currentPath, allPaths, limitDist, size);
-                  if (allPaths.size() >= MAX_PATHS) break;
-            }
-        }
-
-
-        visited.remove(current);
-        currentPath.remove(currentPath.size()-1);
-    }
-
-
-    private double calculatePathScore(List<Point> path, int size) {
-        if (path.isEmpty()) return 0.0;
-        return  path.size();
-    }
-
-
-    private double centralityFactor(Point p, int size) {
-        double centerX = (size-1)/2.0;
-        double centerY = (size-1)/2.0;
-        double dist = Math.sqrt(Math.pow(p.x - centerX,2)+Math.pow(p.y - centerY,2));
-        return 1.0/(dist+1);
-    }
-
-
     private PlayerType getOpponentColor(PlayerType color) {
-        return (color == PlayerType.PLAYER1)? PlayerType.PLAYER2 : PlayerType.PLAYER1;
+        return (color == PlayerType.PLAYER1) ? PlayerType.PLAYER2 : PlayerType.PLAYER1;
     }
 
-
-    private int colorToInt(PlayerType color) {
-        return (color == PlayerType.PLAYER1) ? 1 : -1;
-    }
-
-
+    /**
+     * Retorna tots els moviments legals (caselles buides) del tauler, ordenats
+     * per un factor de centralitat (moviments més propers al centre primer).
+     *
+     * @param s Estat del joc.
+     * @return Llista de moviments legals, ordenada.
+     */
     private List<Point> getLegalMoves(HexGameStatus s) {
-    List<Point> moves = new ArrayList<>();
-    int size = s.getSize();
-    Point center = new Point(size / 2, size / 2);
+        List<Point> moves = new ArrayList<>();
+        int size = s.getSize();
+        Point center = new Point(size / 2, size / 2);
 
-
-    for (int i = 0; i < size; i++) {
-        for (int j = 0; j < size; j++) {
-            if (s.getPos(i, j) == 0) {
-                moves.add(new Point(i, j));
-            }
-        }
-    }
-
-
-    // Ordenar movimientos por centralidad
-    moves.sort(Comparator.comparingDouble(move -> -centralityFactor(move, center)));
-
-
-    return moves;
-}
-    private List<Point> nodosCriticosDefensivos(HexGameStatus gameState, PlayerType opponent) {
-    List<Point> criticalNodes = new ArrayList<>();
-    int size = gameState.getSize();
-    int opponentId = playerToId(opponent);
-
-
-    // Direcciones hexagonales
-    Point[] directions = {
-        new Point(1, 0), new Point(0, 1), new Point(1, -1),
-        new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-    };
-
-
-    for (int x = 0; x < size; x++) {
-        for (int y = 0; y < size; y++) {
-            if (gameState.getPos(x, y) == 0) { // Casilla vacía
-                for (Point d : directions) {
-                    int nx = x + d.x;
-                    int ny = y + d.y;
-                    if (estaDentro(new Point(nx, ny), size) && gameState.getPos(nx, ny) == opponentId) {
-                        criticalNodes.add(new Point(x, y));
-                        break;
-                    }
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                if (s.getPos(i, j) == 0) {
+                    moves.add(new Point(i, j));
                 }
             }
         }
-    }
-    return criticalNodes;
-}
-private int evaluarBloqueoProyectado(HexGameStatus gameState, PlayerType opponent) {
-    List<Point> criticalNodes = nodosCriticosDefensivos(gameState, opponent);
-    int score = 0;
 
-
-    for (Point node : criticalNodes) {
-        if (gameState.getPos(node.x, node.y) == 0) {
-            score -= 20; // Penalización por nodo crítico no bloqueado
-        }
-    }
-    return score;
-}
-
-
-
-
-private double centralityFactor(Point p, Point center) {
-    return 1.0 / (Math.sqrt(Math.pow(p.x - center.x, 2) + Math.pow(p.y - center.y, 2)) + 1);
-}
-    private int evaluarEspacioDisponible(HexGameStatus gameState, Point move, PlayerType player) {
-    int size = gameState.getSize();
-    int playerId = playerToId(player);
-    int espacio = 0;
-
-
-    // Direcciones hexagonales
-    Point[] directions = {
-        new Point(1, 0), new Point(0, 1), new Point(1, -1),
-        new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-    };
-
-
-    // Calcular celdas vacías alcanzables desde el movimiento
-    Set<Point> visitadas = new HashSet<>();
-    Queue<Point> queue = new LinkedList<>();
-    queue.add(move);
-
-
-    while (!queue.isEmpty()) {
-        Point actual = queue.poll();
-        if (visitadas.contains(actual) || !estaDentro(actual, size)) continue;
-
-
-        int cell = gameState.getPos(actual.x, actual.y);
-        if (cell == 0 || cell == playerId) {
-            espacio++;
-            visitadas.add(actual);
-
-
-            for (Point d : directions) {
-                Point vecino = new Point(actual.x + d.x, actual.y + d.y);
-                if (!visitadas.contains(vecino)) {
-                    queue.add(vecino);
-                }
-            }
-        }
+        // Ordenar moviments per un factor de centralitat invers (descendent)
+        moves.sort(Comparator.comparingDouble(move -> -centralityFactor(move, center)));
+        return moves;
     }
 
+    /**
+     * Calcula un factor de centralitat per a la posició p, segons la distància
+     * euclidiana al centre. Com més a prop del centre, més gran és el factor.
+     *
+     * @param p Punt objectiu.
+     * @param center Punt central del tauler.
+     * @return Un valor positiu més gran si p és a prop del centre.
+     */
+    private double centralityFactor(Point p, Point center) {
+        return 1.0 / (Math.sqrt(Math.pow(p.x - center.x, 2) + Math.pow(p.y - center.y, 2)) + 1);
+    }
 
-    return espacio;
-}
-
-
-
-
+    /**
+     * Aplica un moviment (col·loca una fitxa) i retorna un nou estat resultant.
+     *
+     * @param s Estat original del joc.
+     * @param move Moviment que volem fer.
+     * @return Un nou HexGameStatus resultant d'haver col·locat la fitxa.
+     */
     private HexGameStatus applyMove(HexGameStatus s, Point move) {
         HexGameStatus newState = new HexGameStatus(s);
         newState.placeStone(move);
         return newState;
     }
 
-
-    private int[] getVirtualNodes(PlayerType color, int size) {
-        int P1_START = size*size;
-        int P1_END = size*size+1;
-        int P2_START = size*size+2;
-        int P2_END = size*size+3;
-        if (color == PlayerType.PLAYER1) {
-            return new int[]{P1_START, P1_END};
-        } else {
-            return new int[]{P2_START, P2_END};
-        }
-    }
-
-
-    private List<List<Integer>> buildGraphForPaths(HexGameStatus s, PlayerType color) {
-        int size = s.getSize();
-        int totalNodes = size*size+4;
-        List<List<Integer>> graph = new ArrayList<>(totalNodes);
-        for (int i=0;i<totalNodes;i++) graph.add(new ArrayList<>());
-
-
-        PlayerType opponent = getOpponentColor(color);
-        int opponentVal = colorToInt(opponent);
-
-
-        int P1_START = size*size;
-        int P1_END = size*size+1;
-        int P2_START = size*size+2;
-        int P2_END = size*size+3;
-
-
-        for (int x=0;x<size;x++){
-            for(int y=0;y<size;y++){
-                int cellVal = s.getPos(x,y);
-                if (cellVal!=opponentVal) {
-                    int u = x*size+y;
-                    for (int[] d: HEX_DIRECTIONS) {
-                        int nx=x+d[0], ny=y+d[1];
-                        if (nx>=0 && nx<size && ny>=0 && ny<size) {
-                            int neighVal=s.getPos(nx,ny);
-                            if (neighVal!=opponentVal) {
-                                int v=nx*size+ny;
-                                graph.get(u).add(v);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-
-        if (color==PlayerType.PLAYER1) {
-            for (int yy=0;yy<size;yy++){
-                if(s.getPos(0,yy)!=opponentVal)
-                    graph.get(P1_START).add(0*size+yy);
-            }
-            for (int yy=0;yy<size;yy++){
-                if(s.getPos(size-1,yy)!=opponentVal)
-                    graph.get((size-1)*size+yy).add(P1_END);
-            }
-        } else {
-            for (int xx=0;xx<size;xx++){
-                if(s.getPos(xx,0)!=opponentVal)
-                    graph.get(P2_START).add(xx*size+0);
-            }
-            for (int xx=0;xx<size;xx++){
-                if(s.getPos(xx,size-1)!=opponentVal)
-                    graph.get(xx*size+(size-1)).add(P2_END);
-            }
-        }
-
-
-        return graph;
-    }
-
-
-    private int calculateShortestDistanceDijkstra(List<List<Integer>> graph, int startNode, int endNode) {
-        int n=graph.size();
-        int[] dist=new int[n];
-        Arrays.fill(dist,Integer.MAX_VALUE);
-        dist[startNode]=0;
-        PriorityQueue<int[]>pq=new PriorityQueue<>(Comparator.comparingInt(a->a[1]));
-        pq.add(new int[]{startNode,0});
-        while(!pq.isEmpty()){
-            int[]cur=pq.poll();
-            int u=cur[0],d=cur[1];
-            if (d>dist[u]) continue;
-            if (u==endNode)return d;
-            for(int w:graph.get(u)){
-                int nd=d+1;
-                if(nd<dist[w]){
-                    dist[w]=nd;
-                    pq.add(new int[]{w,nd});
-                }
-            }
-        }
-        return Integer.MAX_VALUE;
-    }
-
-
-    private void filterGraph(List<List<Integer>> graph, int startNode, int endNode) {
-        Set<Integer> fromStart=bfsReachable(graph,startNode);
-        List<List<Integer>> rev=buildReverseGraph(graph);
-        Set<Integer> fromEnd=bfsReachable(rev,endNode);
-        Set<Integer>intersection=new HashSet<>(fromStart);
-        intersection.retainAll(fromEnd);
-
-
-        for(int u=0;u<graph.size();u++){
-            if(!intersection.contains(u)){
-                graph.get(u).clear();
-            } else {
-                graph.get(u).removeIf(v->!intersection.contains(v));
+    /**
+     * Inicialitza la taula per al Hashing. Assigna un valor aleatori 
+     * a cada (casella, jugador) per poder distingir els estats.
+     *
+     * @param size Mida n del tauler (n x n).
+     */
+    private void initializeTable(int size) {
+        Random rand = new Random(123456789);
+        table = new long[size * size][2];
+        for (int i = 0; i < size * size; i++) {
+            for (int j = 0; j < 2; j++) {
+                table[i][j] = rand.nextLong();
             }
         }
     }
 
-
-    private Set<Integer> bfsReachable(List<List<Integer>> g,int start){
-        Set<Integer>visited=new HashSet<>();
-        Queue<Integer>q=new LinkedList<>();
-        visited.add(start);
-        q.add(start);
-        while(!q.isEmpty()){
-            int u=q.poll();
-            for(int w:g.get(u)){
-                if(!visited.contains(w)){
-                    visited.add(w);
-                    q.add(w);
-                }
-            }
-        }
-        return visited;
-    }
-
-
-    private List<List<Integer>> buildReverseGraph(List<List<Integer>> graph) {
-        int n=graph.size();
-        List<List<Integer>> rev=new ArrayList<>(n);
-        for(int i=0;i<n;i++) rev.add(new ArrayList<>());
-        for(int u=0;u<n;u++){
-            for(int v:graph.get(u)){
-                rev.get(v).add(u);
-            }
-        }
-        return rev;
-    }
-
-
-    private List<List<Point>> convertPathsToPoints(List<List<Integer>> paths, int size) {
-        List<List<Point>> result=new ArrayList<>();
-        for(List<Integer> path:paths){
-            List<Point> pPath=new ArrayList<>();
-            for(int n:path){
-                if(n<size*size){
-                    int x=n/size;
-                    int y=n%size;
-                    pPath.add(new Point(x,y));
-                }
-            }
-            if(!pPath.isEmpty())result.add(pPath);
-        }
-        return result;
-    }
-
-
-    // ---------------------------
-    // Zobrist Hashing
-    // ---------------------------
-    private void initializeZobristTable(int size) {
-        Random rand = new Random(123456789); // semilla fija o variable
-        // Para cada casilla y para cada jugador posible
-        // Tenemos 2 jugadores: Player1 y Player2
-        // Indice jugador: 0 -> Player1, 1-> Player2
-        zobristTable = new long[size*size][2];
-        for (int i=0; i<size*size; i++) {
-            for (int j=0; j<2; j++) {
-                zobristTable[i][j] = rand.nextLong();
-            }
-        }
-    }
-
-
+    /**
+     * Calcula el hash de l'estat actual del tauler.
+     *
+     * @param s Estat del joc.
+     * @return Un long representant l'hash d'aquest estat.
+     */
     private long computeHash(HexGameStatus s) {
         long h = 0L;
         int size = s.getSize();
-        for (int x=0; x<size; x++) {
-            for (int y=0; y<size; y++) {
-                int val = s.getPos(x,y);
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                int val = s.getPos(x, y);
                 if (val != 0) {
-                    int index = x*size+y;
-                    int playerIndex = (val == 1)? 0 : 1;
-                    h ^= zobristTable[index][playerIndex];
+                    int index = x * size + y;
+                    int playerIndex = (val == 1) ? 0 : 1; 
+                    h ^= table[index][playerIndex];
                 }
             }
         }
         return h;
     }
 
-
-    // Clase de entrada a la tabla de transposición
+    /**
+     * Classe interna per guardar entrades de la taula de transposició.
+     * Emmagatzema informació de valor, profunditat, flag (EXACT, LOWERBOUND, UPPERBOUND),
+     * i el possible millor moviment associat.
+     */
     private static class TranspositionEntry {
         public static final int EXACT = 0;
         public static final int LOWERBOUND = 1;
         public static final int UPPERBOUND = 2;
-
 
         int value;
         int depth;
         int flag;
         Point bestMove;
 
-
+        /**
+         * Constructor de l'entrada de la taula de transposició.
+         * 
+         * @param value Valor a emmagatzemar.
+         * @param depth Profunditat a la qual s'ha calculat.
+         * @param flag Marca (EXACT, LOWERBOUND o UPPERBOUND).
+         * @param bestMove El millor moviment trobat, si escau.
+         */
         TranspositionEntry(int value, int depth, int flag, Point bestMove) {
             this.value = value;
             this.depth = depth;
@@ -1605,5 +772,35 @@ private double centralityFactor(Point p, Point center) {
             this.bestMove = bestMove;
         }
     }
-    
+
+    /**
+     * Node utilitzat per Dijkstra. Guarda posició (x,y) i distància fins a la font.
+     */
+    public static class Node implements Comparable<Node> {
+        int x, y, distance;
+
+        /**
+         * Constructor del node per Dijkstra.
+         *
+         * @param x Coordenada x.
+         * @param y Coordenada y.
+         * @param dist Distància des de la font fins a aquest node.
+         */
+        Node(int x, int y, int dist) {
+            this.x = x;
+            this.y = y;
+            this.distance = dist;
+        }
+
+        /**
+         * Compara segons la distància (per fer PriorityQueue).
+         *
+         * @param other L'altre node a comparar.
+         * @return Comparació lexicogràfica per distance.
+         */
+        @Override
+        public int compareTo(Node other) {
+            return Integer.compare(this.distance, other.distance);
+        }
+    }
 }

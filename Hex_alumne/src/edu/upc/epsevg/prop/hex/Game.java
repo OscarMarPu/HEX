@@ -25,7 +25,7 @@ public class Game {
                 
                 IPlayer player1 = new H_E_X_Player(2/*GB*/);
                 //IPlayer player2 = new RandomPlayer("random");
-                PlayerMinimax player2 = new PlayerMinimax("MiJugador",4, false);
+                PlayerMinimax player2 = new PlayerMinimax("MiJugador",2, true);
 
                 //IPlayer player1 = new HumanPlayer("Human1");
                 //IPlayer player2 = new HumanPlayer("Human");

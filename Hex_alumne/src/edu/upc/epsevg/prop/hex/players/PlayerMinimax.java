@@ -145,9 +145,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
     private PlayerMove IDS(HexGameStatus s, List<Point> baseMoves) {
         Point bestMoveOverall = null; 
 
-        // Anem augmentant profunditat de 1 fins a la definició (profunditat)
-        for (int currentDepth = 1; currentDepth <= this.profunditat; currentDepth++) {
-            if (stopSearch) break;
+        for (int currentDepth = 1; !stopSearch; currentDepth++) {
             
             List<Point> possibleMoves = new ArrayList<>(baseMoves);
             long stateHash = computeHash(s);

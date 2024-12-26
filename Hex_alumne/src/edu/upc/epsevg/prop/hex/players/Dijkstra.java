@@ -8,86 +8,96 @@ import java.util.*;
 public class Dijkstra {
 
     
-    private int getCost(HexGameStatus gameState, int x, int y, int playerId) {
+    /**
+     * Calcula el cost d'una cel·la en funció del seu estat i del jugador.
+     * 
+     * @param gameState Estat actual del joc.
+     * @param x Coordenada X de la cel·la.
+     * @param y Coordenada Y de la cel·la.
+     * @param playerId Identificador del jugador.
+     * @return El cost de la cel·la per al jugador.
+     */
+    public int getCost(HexGameStatus gameState, int x, int y, int playerId) {
         int cell = gameState.getPos(x, y);
         if (cell == playerId) return 0;
         if (cell == 0) return 1;
-        // cell == -playerId => rival
         return (cell == -playerId) ? Integer.MAX_VALUE : 1;
     }
 
+    /**
+     * Calcula la distància mínima des d'una font fins al destí mitjançant Dijkstra.
+     * 
+     * @param gameState Estat actual del joc.
+     * @param p Tipus de jugador (PLAYER1 o PLAYER2).
+     * @return La distància mínima.
+     */
     public int calcularDistanciaMinima(HexGameStatus gameState, PlayerType p) {
-    int size = gameState.getSize();
-    int playerId = (p == PlayerType.PLAYER1) ? 1 : -1;
+        int size = gameState.getSize();
+        int playerId = (p == PlayerType.PLAYER1) ? 1 : -1;
 
-    // Crear lista de nodos fuente según el jugador.
-    List<Point> fuentes = (p == PlayerType.PLAYER1) ? getTransitableTop(gameState, playerId) : getTransitableLeft(gameState, playerId);
+        List<Point> fuentes = (p == PlayerType.PLAYER1) ? getTransitableTop(gameState, playerId) : getTransitableLeft(gameState, playerId);
 
-    // Si no hay fuentes transitables, retornar distancia muy grande.
-    if (fuentes.isEmpty()) return 999999;
+        if (fuentes.isEmpty()) return 999999;
 
-    // Inicializar matrices de distancia.
-    int[][] dist = new int[size][size];
-    for (int i = 0; i < size; i++) {
-        Arrays.fill(dist[i], Integer.MAX_VALUE);
-    }
-
-    // PriorityQueue optimizada para Dijkstra.
-    PriorityQueue<HexHeuristica.Node> pq = new PriorityQueue<>(Comparator.comparingInt(n -> n.distance));
-
-    // Inicializar distancias desde las fuentes.
-    for (Point f : fuentes) {
-        int cost = getCost(gameState, f.x, f.y, playerId);
-        if (cost != Integer.MAX_VALUE) {
-            dist[f.x][f.y] = cost;
-            pq.add(new HexHeuristica.Node(f.x, f.y, cost));
-        }
-    }
-
-    // Definir movimientos posibles en Hex.
-    Point[] directions = {
-        new Point(0, 1), new Point(1, 0), new Point(1, -1),
-        new Point(0, -1), new Point(-1, 0), new Point(-1, 1)
-    };
-
-    // Ejecutar Dijkstra.
-    while (!pq.isEmpty()) {
-        HexHeuristica.Node current = pq.poll();
-
-        // Ignorar nodos ya procesados con menor distancia.
-        if (current.distance > dist[current.x][current.y]) continue;
-
-        // Verificar si se ha llegado al borde contrario.
-        if ((p == PlayerType.PLAYER1 && current.x == size - 1) ||
-            (p == PlayerType.PLAYER2 && current.y == size - 1)) {
-            //System.out.println("Llegó al borde en (" + current.x + ", " + current.y + ") con distancia: " + current.distance);
-            return current.distance;
+        int[][] dist = new int[size][size];
+        for (int i = 0; i < size; i++) {
+            Arrays.fill(dist[i], Integer.MAX_VALUE);
         }
 
-        // Explorar vecinos.
-        for (Point d : directions) {
-            int nx = current.x + d.x;
-            int ny = current.y + d.y;
-            if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        PriorityQueue<PlayerMinimax.Node> pq = new PriorityQueue<>(Comparator.comparingInt(n -> n.distance));
 
-            int c = getCost(gameState, nx, ny, playerId);
-            if (c == Integer.MAX_VALUE) continue; // No se puede pasar por el rival.
-
-            int newDist = dist[current.x][current.y] + c;
-            if (newDist < dist[nx][ny]) {
-                dist[nx][ny] = newDist;
-                pq.add(new HexHeuristica.Node(nx, ny, newDist));
-                //System.out.println("Actualizando casilla (" + nx + ", " + ny + ") con nueva distancia: " + newDist);
+        for (Point f : fuentes) {
+            int cost = getCost(gameState, f.x, f.y, playerId);
+            if (cost != Integer.MAX_VALUE) {
+                dist[f.x][f.y] = cost;
+                pq.add(new PlayerMinimax.Node(f.x, f.y, cost));
             }
         }
+
+        Point[] directions = {
+            new Point(0, 1), new Point(1, 0), new Point(1, -1),
+            new Point(0, -1), new Point(-1, 0), new Point(-1, 1)
+        };
+
+        while (!pq.isEmpty()) {
+            PlayerMinimax.Node current = pq.poll();
+
+            if (current.distance > dist[current.x][current.y]) continue;
+
+            if ((p == PlayerType.PLAYER1 && current.x == size - 1) ||
+                (p == PlayerType.PLAYER2 && current.y == size - 1)) {
+                return current.distance;
+            }
+
+            for (Point d : directions) {
+                int nx = current.x + d.x;
+                int ny = current.y + d.y;
+                if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+
+                int c = getCost(gameState, nx, ny, playerId);
+                if (c == Integer.MAX_VALUE) continue;
+
+                int newDist = dist[current.x][current.y] + c;
+                if (newDist < dist[nx][ny]) {
+                    dist[nx][ny] = newDist;
+                    pq.add(new PlayerMinimax.Node(nx, ny, newDist));
+                }
+            }
+        }
+
+        return 999999;
     }
 
-    // No se encontró conexión.
-    //System.out.println("No se encontró conexión para " + p);
-    return 999999;
-}
 
-    private int calculateShortestDistanceDijkstra(List<List<Integer>> graph, int startNode, int endNode) {
+    /**
+     * Calcula la distància més curta entre dos nodes en un graf utilitzant l'algorisme de Dijkstra.
+     * 
+     * @param graph Graf representat com una llista d'adjacències.
+     * @param startNode Node inicial.
+     * @param endNode Node final.
+     * @return La distància més curta entre el node inicial i el node final.
+     */
+    public int calculateShortestDistanceDijkstra(List<List<Integer>> graph, int startNode, int endNode) {
         int n=graph.size();
         int[] dist=new int[n];
         Arrays.fill(dist,Integer.MAX_VALUE);
@@ -109,11 +119,24 @@ public class Dijkstra {
         }
         return Integer.MAX_VALUE;
     }
- 
-    private void findAllPathsRecursiveOptimized(List<List<Integer>> graph, int current, int endNode,
+    
+
+    /**
+     * Troba tots els camins entre dos nodes d'un graf de manera optimitzada.
+     * 
+     * @param graph Graf representat com una llista d'adjacències.
+     * @param current Node actual.
+     * @param endNode Node final.
+     * @param visited Nodes visitats fins al moment.
+     * @param currentPath Camí actual.
+     * @param allPaths Llista de tots els camins trobats.
+     * @param limitDist Límits de distància màxima.
+     * @param size Mida del tauler.
+     */
+    public void findAllPathsRecursiveOptimized(List<List<Integer>> graph, int current, int endNode,
                                                 Set<Integer> visited, List<Integer> currentPath,
                                                 List<List<Integer>> allPaths, int limitDist, int size) {
-        final int MAX_PATHS = 10000; // Evitar explotar
+        final int MAX_PATHS = 10000;
         if (allPaths.size() >= MAX_PATHS) return;
 
 
@@ -145,27 +168,27 @@ public class Dijkstra {
     }
 
 
-
-    private List<List<Point>> findAllPathsOptimized(HexGameStatus s, PlayerType color) {
+    /**
+     * Troba tots els camins possibles en un tauler de joc Hex per a un jugador determinat.
+     * 
+     * @param s Estat del tauler de joc.
+     * @param color Jugador per al qual es busquen els camins.
+     * @return Llista de camins representats com a punts del tauler.
+     */
+    public List<List<Point>> findAllPathsOptimized(HexGameStatus s, PlayerType color) {
         int size = s.getSize();
         int[] nodes = getVirtualNodes(color, size);
         int startNode = nodes[0];
         int endNode = nodes[1];
 
-
-        // Construir grafo
         List<List<Integer>> graph = buildGraphForPaths(s, color);
 
-
-        // Calcular distMin con Dijkstra
         int distMin = calculateShortestDistanceDijkstra(graph, startNode, endNode);
         if (distMin == Integer.MAX_VALUE) {
             return new ArrayList<>();
         }
         int limitDist = distMin;
 
-
-        // Filtrar grafo
         filterGraph(graph, startNode, endNode);
 
 
@@ -180,7 +203,15 @@ public class Dijkstra {
         return convertPathsToPoints(allPaths, size);
     }
     
-    private void filterGraph(List<List<Integer>> graph, int startNode, int endNode) {
+
+    /**
+     * Filtra el graf per mantenir només els nodes connectats entre els nodes inicial i final.
+     * 
+     * @param graph Graf a filtrar.
+     * @param startNode Node inicial.
+     * @param endNode Node final.
+     */
+    public void filterGraph(List<List<Integer>> graph, int startNode, int endNode) {
         Set<Integer> fromStart=bfsReachable(graph,startNode);
         List<List<Integer>> rev=buildReverseGraph(graph);
         Set<Integer> fromEnd=bfsReachable(rev,endNode);
@@ -196,7 +227,15 @@ public class Dijkstra {
             }
         }
     }
-    private List<List<Integer>> buildReverseGraph(List<List<Integer>> graph) {
+
+
+    /**
+     * Construeix el graf invers d'un graf donat.
+     * 
+     * @param graph Graf original.
+     * @return Graf invers.
+     */
+    public List<List<Integer>> buildReverseGraph(List<List<Integer>> graph) {
         int n=graph.size();
         List<List<Integer>> rev=new ArrayList<>(n);
         for(int i=0;i<n;i++) rev.add(new ArrayList<>());
@@ -208,8 +247,14 @@ public class Dijkstra {
         return rev;
     }
     
-    
-    private Set<Integer> bfsReachable(List<List<Integer>> g,int start){
+    /**
+     * Obté tots els nodes accessibles des d'un node inicial mitjançant BFS.
+     * 
+     * @param g Graf representat com una llista d'adjacències.
+     * @param start Node inicial.
+     * @return Conjunt de nodes accessibles.
+     */
+    public Set<Integer> bfsReachable(List<List<Integer>> g,int start){
         Set<Integer>visited=new HashSet<>();
         Queue<Integer>q=new LinkedList<>();
         visited.add(start);
@@ -226,7 +271,14 @@ public class Dijkstra {
         return visited;
     }
     
-    private List<List<Point>> convertPathsToPoints(List<List<Integer>> paths, int size) {
+    /**
+     * Converteix una llista de camins en format d'índex a format de punts del tauler.
+     * 
+     * @param paths Llista de camins com a índexs.
+     * @param size Mida del tauler.
+     * @return Llista de camins com a punts del tauler.
+     */
+    public List<List<Point>> convertPathsToPoints(List<List<Integer>> paths, int size) {
         List<List<Point>> result=new ArrayList<>();
         for(List<Integer> path:paths){
             List<Point> pPath=new ArrayList<>();
@@ -242,141 +294,135 @@ public class Dijkstra {
         return result;
     }
 
-
-   public double calculateAllPathsScoreOptimized(HexGameStatus s, PlayerType color) {
+    /**
+     * Calcula una puntuació basada en el nombre de camins trobats per a un jugador.
+     * 
+     * @param s Estat del tauler de joc.
+     * @param color Jugador per al qual es calcula la puntuació.
+     * @return Puntuació basada en el nombre de camins trobats.
+     */
+    public double calculateAllPathsScoreOptimized(HexGameStatus s, PlayerType color) {
         List<List<Point>> paths = findAllPathsOptimized(s, color);
         double score = 0.0;
             score = paths.size();
         return score;
     }
-     private int bloquearCaminoDelOponente(HexGameStatus gameState, PlayerType opponent) {
-        int distOpponent = calcularDistanciaMinima(gameState, opponent);
-        if (distOpponent < 999999) {
-            // Penalización inversamente proporcional a la distancia del oponente.
-            // Cuanto menor sea la distancia, mayor la penalización.
-            return -(1000 / (distOpponent + 1)); // +1 para evitar división por cero.
-        }
-        return 0;
-    }
-
     
-    private static final int[][] HEX_DIRECTIONS = {
-    {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}
-};
+    public static final int[][] HEX_DIRECTIONS = {
+        {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}
+    };
 
-// Direcciones diagonales y sus adyacencias compartidas.
-private static final int[][] DIAGONAL_DIRECTIONS = {
-    {1, 1},  // Diagonal inferior derecha
-    {-1, -1}, // Diagonal superior izquierda
-    {1, -1},  // Diagonal inferior izquierda
-    {-1, 1}   // Diagonal superior derecha
-};
+    public static final int[][] DIAGONAL_DIRECTIONS = {
+        {1, 1},
+        {-1, -1},
+        {1, -1}, 
+        {-1, 1}   
+    };
 
-private static final int[][][] SHARED_ADJACENT_DIRECTIONS = {
-    {{0, 1}, {1, 0}},  // Para la diagonal (1, 1)
-    {{0, -1}, {-1, 0}}, // Para la diagonal (-1, -1)
-    {{0, -1}, {1, 0}},  // Para la diagonal (1, -1)
-    {{0, 1}, {-1, 0}}   // Para la diagonal (-1, 1)
-};
+    public static final int[][][] SHARED_ADJACENT_DIRECTIONS = {
+        {{0, 1}, {1, 0}}, 
+        {{0, -1}, {-1, 0}},
+        {{0, -1}, {1, 0}},
+        {{0, 1}, {-1, 0}}
+    };
 
-/**
- * Construye un grafo basado en el estado del tablero y las restricciones del jugador.
- *
- * @param gameState Estado del tablero.
- * @param player Jugador para el cual se construye el grafo.
- * @return Lista de adyacencias representando el grafo.
- */
-private List<List<Integer>> buildGraphForPaths(HexGameStatus s, PlayerType color) {
-    int size = s.getSize();
-    int totalNodes = size * size + 4;
-    List<List<Integer>> graph = new ArrayList<>(totalNodes);
-    for (int i = 0; i < totalNodes; i++) graph.add(new ArrayList<>());
 
-    PlayerType opponent = getOpponentColor(color);
-    int opponentVal = colorToInt(opponent);
+    /**
+     * Construeix un graf basat en l'estat del tauler i el jugador donat.
+     * 
+     * @param s Estat del joc.
+     * @param color Jugador per al qual es construeix el graf.
+     * @return Llista d'adjacències que representa el graf.
+     */
+    public List<List<Integer>> buildGraphForPaths(HexGameStatus s, PlayerType color) {
+        int size = s.getSize();
+        int totalNodes = size * size + 4;
+        List<List<Integer>> graph = new ArrayList<>(totalNodes);
+        for (int i = 0; i < totalNodes; i++) graph.add(new ArrayList<>());
 
-    int P1_START = size * size;
-    int P1_END = size * size + 1;
-    int P2_START = size * size + 2;
-    int P2_END = size * size + 3;
+        PlayerType opponent = getOpponentColor(color);
+        int opponentVal = colorToInt(opponent);
 
-    for (int x = 0; x < size; x++) {
-        for (int y = 0; y < size; y++) {
-            int cellVal = s.getPos(x, y);
-            if (cellVal != opponentVal) {
-                int u = x * size + y;
+        int P1_START = size * size;
+        int P1_END = size * size + 1;
+        int P2_START = size * size + 2;
+        int P2_END = size * size + 3;
 
-                // Agregar conexiones hexagonales normales.
-                for (int[] d : HEX_DIRECTIONS) {
-                    int nx = x + d[0], ny = y + d[1];
-                    if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
-                        int neighVal = s.getPos(nx, ny);
-                        if (neighVal != opponentVal) {
-                            int v = nx * size + ny;
-                            graph.get(u).add(v);
-                        }
-                    }
-                }
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                int cellVal = s.getPos(x, y);
+                if (cellVal != opponentVal) {
+                    int u = x * size + y;
 
-                // Agregar conexiones diagonales bajo la nueva regla.
-                for (int i = 0; i < DIAGONAL_DIRECTIONS.length; i++) {
-                    int[] diag = DIAGONAL_DIRECTIONS[i];
-                    int nx = x + diag[0], ny = y + diag[1];
-
-                    if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
-                        int diagVal = s.getPos(nx, ny);
-                        if (diagVal != opponentVal) {
-                            // Verificar las conexiones adyacentes compartidas.
-                            int[] adj1 = SHARED_ADJACENT_DIRECTIONS[i][0];
-                            int[] adj2 = SHARED_ADJACENT_DIRECTIONS[i][1];
-
-                            int adj1x = x + adj1[0], adj1y = y + adj1[1];
-                            int adj2x = x + adj2[0], adj2y = y + adj2[1];
-
-                            boolean adj1Free = adj1x >= 0 && adj1x < size && adj1y >= 0 && adj1y < size
-                                    && s.getPos(adj1x, adj1y) != opponentVal;
-                            boolean adj2Free = adj2x >= 0 && adj2x < size && adj2y >= 0 && adj2y < size
-                                    && s.getPos(adj2x, adj2y) != opponentVal;
-
-                            if (adj1Free && adj2Free) {
+                    for (int[] d : HEX_DIRECTIONS) {
+                        int nx = x + d[0], ny = y + d[1];
+                        if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
+                            int neighVal = s.getPos(nx, ny);
+                            if (neighVal != opponentVal) {
                                 int v = nx * size + ny;
                                 graph.get(u).add(v);
+                            }
+                        }
+                    }
+
+                    for (int i = 0; i < DIAGONAL_DIRECTIONS.length; i++) {
+                        int[] diag = DIAGONAL_DIRECTIONS[i];
+                        int nx = x + diag[0], ny = y + diag[1];
+
+                        if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
+                            int diagVal = s.getPos(nx, ny);
+                            if (diagVal != opponentVal) {
+                                int[] adj1 = SHARED_ADJACENT_DIRECTIONS[i][0];
+                                int[] adj2 = SHARED_ADJACENT_DIRECTIONS[i][1];
+
+                                int adj1x = x + adj1[0], adj1y = y + adj1[1];
+                                int adj2x = x + adj2[0], adj2y = y + adj2[1];
+
+                                boolean adj1Free = adj1x >= 0 && adj1x < size && adj1y >= 0 && adj1y < size
+                                        && s.getPos(adj1x, adj1y) != opponentVal;
+                                boolean adj2Free = adj2x >= 0 && adj2x < size && adj2y >= 0 && adj2y < size
+                                        && s.getPos(adj2x, adj2y) != opponentVal;
+
+                                if (adj1Free && adj2Free) {
+                                    int v = nx * size + ny;
+                                    graph.get(u).add(v);
+                                }
                             }
                         }
                     }
                 }
             }
         }
+
+        if (color == PlayerType.PLAYER1) {
+            for (int yy = 0; yy < size; yy++) {
+                if (s.getPos(0, yy) != opponentVal)
+                    graph.get(P1_START).add(0 * size + yy);
+            }
+            for (int yy = 0; yy < size; yy++) {
+                if (s.getPos(size - 1, yy) != opponentVal)
+                    graph.get((size - 1) * size + yy).add(P1_END);
+            }
+        } else {
+            for (int xx = 0; xx < size; xx++) {
+                if (s.getPos(xx, 0) != opponentVal)
+                    graph.get(P2_START).add(xx * size + 0);
+            }
+            for (int xx = 0; xx < size; xx++) {
+                if (s.getPos(xx, size - 1) != opponentVal)
+                    graph.get(xx * size + (size - 1)).add(P2_END);
+            }
+        }
+
+        return graph;
     }
-
-    // Conexiones para PLAYER1.
-    if (color == PlayerType.PLAYER1) {
-        for (int yy = 0; yy < size; yy++) {
-            if (s.getPos(0, yy) != opponentVal)
-                graph.get(P1_START).add(0 * size + yy);
-        }
-        for (int yy = 0; yy < size; yy++) {
-            if (s.getPos(size - 1, yy) != opponentVal)
-                graph.get((size - 1) * size + yy).add(P1_END);
-        }
-    } else { // Conexiones para PLAYER2.
-        for (int xx = 0; xx < size; xx++) {
-            if (s.getPos(xx, 0) != opponentVal)
-                graph.get(P2_START).add(xx * size + 0);
-        }
-        for (int xx = 0; xx < size; xx++) {
-            if (s.getPos(xx, size - 1) != opponentVal)
-                graph.get(xx * size + (size - 1)).add(P2_END);
-        }
-    }
-
-    return graph;
-}
-
-
 
     /**
-     * Devuelve los nodos virtuales de inicio y fin para un jugador.
+     * Obté els nodes virtuals de començament i final per a un jugador.
+     * 
+     * @param color Jugador (PLAYER1 o PLAYER2).
+     * @param size Mida del tauler.
+     * @return Matriu amb els nodes virtuals d'inici i final.
      */
     public int[] getVirtualNodes(PlayerType color, int size) {
         int P1_START = size * size;
@@ -391,20 +437,33 @@ private List<List<Integer>> buildGraphForPaths(HexGameStatus s, PlayerType color
     }
 
     /**
-     * Convierte el tipo de jugador a su ID numérico.
+     * Converteix el tipus de jugador en el seu identificador numèric.
+     * 
+     * @param color Jugador (PLAYER1 o PLAYER2).
+     * @return Enter que representa el jugador (1 o -1).
      */
-    private int colorToInt(PlayerType color) {
+    public int colorToInt(PlayerType color) {
         return (color == PlayerType.PLAYER1) ? 1 : -1;
     }
 
     /**
-     * Obtiene el color del oponente.
+     * Obté el color de l'oponent d'un jugador.
+     * 
+     * @param color Jugador (PLAYER1 o PLAYER2).
+     * @return El color de l'oponent.
      */
-    private PlayerType getOpponentColor(PlayerType color) {
+    public PlayerType getOpponentColor(PlayerType color) {
         return (color == PlayerType.PLAYER1) ? PlayerType.PLAYER2 : PlayerType.PLAYER1;
     }
-    
-    private List<Point> getTransitableTop(HexGameStatus gameState, int playerId) {
+
+    /**
+     * Obté les cel·les transitables des de la part superior del tauler per a PLAYER1.
+     * 
+     * @param gameState Estat actual del joc.
+     * @param playerId Identificador del jugador.
+     * @return Llista de punts transitables.
+     */
+    public List<Point> getTransitableTop(HexGameStatus gameState, int playerId) {
         List<Point> fuentes = new ArrayList<>();
         int size = gameState.getSize();
         for (int y = 0; y < size; y++) {
@@ -414,36 +473,15 @@ private List<List<Integer>> buildGraphForPaths(HexGameStatus s, PlayerType color
         }
         return fuentes;
     }
- private List<Point> getTransitableBottom(HexGameStatus gameState, int playerId) {
-        List<Point> fuentes = new ArrayList<>();
-        int size = gameState.getSize();
-        for (int y = 0; y < size; y++) {
-            if (gameState.getPos(size - 1, y) != -playerId) {
-                fuentes.add(new Point(size - 1, y));
-            }
-        }
-        return fuentes;
-    }
-
 
     /**
-     * Recupera las celdas transitables desde la parte derecha del tablero para PLAYER2.
-     *
-     * @param gameState Estado actual del juego.
-     * @param playerId Identificador numérico del jugador.
-     * @return Lista de puntos transitables.
+     * Obté les cel·les transitables des de l'esquerra del tauler per a PLAYER2.
+     * 
+     * @param gameState Estat actual del joc.
+     * @param playerId Identificador del jugador.
+     * @return Llista de punts transitables.
      */
-    private List<Point> getTransitableRight(HexGameStatus gameState, int playerId) {
-        List<Point> fuentes = new ArrayList<>();
-        int size = gameState.getSize();
-        for (int x = 0; x < size; x++) {
-            if (gameState.getPos(x, size - 1) != -playerId) {
-                fuentes.add(new Point(x, size - 1));
-            }
-        }
-        return fuentes;
-    }
-    private List<Point> getTransitableLeft(HexGameStatus gameState, int playerId) {
+    public List<Point> getTransitableLeft(HexGameStatus gameState, int playerId) {
         List<Point> fuentes = new ArrayList<>();
         int size = gameState.getSize();
         for (int x = 0; x < size; x++) {
@@ -453,6 +491,6 @@ private List<List<Integer>> buildGraphForPaths(HexGameStatus s, PlayerType color
         }
         return fuentes;
     }
-    
+        
 
 }

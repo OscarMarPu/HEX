@@ -112,7 +112,6 @@ public class PlayerMinimax implements IPlayer, IAuto {
 
         // Explorem tots els moviments a la profunditat fixada
         for (Point move : possibleMoves) {
-
             HexGameStatus newState = applyMove(s, move);
             int value = minValue(newState, getOpponentColor(myColor), alpha, beta, profunditat - 1);
             if (value > bestValue) {
@@ -346,39 +345,62 @@ public class PlayerMinimax implements IPlayer, IAuto {
      * Funció d'avaluació heurística: calcula un valor (heurística) per a l'estat
      * del tauler donat, des de la perspectiva del jugador.
      *      Si el joc ha acabat, valor màxim o mínim depenent de qui hagi guanyat.
-     *      En cas contrari, es combinen diverses heurístiques (distàncies a la victòria, 
-     *   penalització de redundància, bloqueig del camí del rival, etc.).
+     *      bloqueig del camí del rival, etc.).
      *
      * @param s Estat actual del joc.
      * @param evaluatorColor Color del jugador que estem avaluant.
      * @return Valor enter que indica la “bona posició” per al jugador actual.
      */
     private int evaluate(HexGameStatus s, PlayerType evaluatorColor) {
-        if (s.isGameOver()) {
-            PlayerType winner = s.GetWinner();
-            return (winner == myColor) ? MAXIM : -MAXIM;
-        }
-
-        PlayerType opponentColor = getOpponentColor(evaluatorColor);
-        double heuristic = 0;
-
-        // Càlcul distàncies amb un Dijkstra
-        Dijkstra dijkstra = new Dijkstra();
-        
-        int distCurrent = dijkstra.calcularDistanciaMinima(s, evaluatorColor);
-        int distOpponent = dijkstra.calcularDistanciaMinima(s, opponentColor);
-        if (distCurrent == 0) return MAXIM;
-        if (distOpponent == 0) return -MAXIM;
-        
-        // Prioritzar distància a la victòria pròpia i allunyar el rival
-        heuristic += (distOpponent * 3 - distCurrent);
-
-        // Penalitzar redundàncies i bloquejar camí del rival
-        heuristic -= penalizarConexionesRedundantes(s, evaluatorColor);
-        heuristic += bloquearCaminoDelOponente(s, opponentColor);
-        
-        return (int) heuristic;
+    if (s.isGameOver()) {
+        PlayerType winner = s.GetWinner();
+        return (winner == evaluatorColor) ? MAXIM : -MAXIM;
     }
+    PlayerType opponentColor = getOpponentColor(evaluatorColor);
+    Dijkstra dijkstra = new Dijkstra();
+    int distMe = dijkstra.calcularDistanciaMinima(s, evaluatorColor);
+    int distOpp = dijkstra.calcularDistanciaMinima(s, opponentColor);
+
+    if (distMe == 0) return MAXIM;
+    if (distOpp == 0) return -MAXIM;
+    
+    double heuristic = 0;
+    heuristic += distOpp * 2 - distMe;
+    heuristic += bloquearCaminoDelOponente(s, opponentColor)*0.5;
+
+    return (int) heuristic;
+}
+/**
+ * Genera una llista de moviments de resposta per les amenaces de les fitxes de l'oponent.
+ * Una resposta a una amenaça consisteix a identificar posicions adjacents a les fitxes de l'oponent.
+ *
+ * @param s Estat actual del joc.
+ * @param player jugador que estem avaluant.
+ * @return una llista de les posicions de les respostes a les amenaces.
+ */
+private List<Point> amenazas(HexGameStatus s, PlayerType player) {
+    List<Point> respuestas = new ArrayList<>();
+    List<Point> oponente = obtenerFichasPropias(s, getOpponentColor(player));
+
+    for (Point piece : oponente) {
+        Point[] directions = {
+            new Point(-1, 0), new Point(1, 0), new Point(0, -1),
+            new Point(0, 1), new Point(-1, 1), new Point(1, -1)
+        };
+
+        for (Point dir : directions) {
+            Point amenazas = new Point(piece.x + dir.x, piece.y + dir.y);
+            Point cont = new Point(amenazas.x, amenazas.y + dir.y);
+
+            if (estaDentro(amenazas, s.getSize()) && s.getPos(amenazas.x, amenazas.y) == 0 &&
+                estaDentro(cont, s.getSize()) && s.getPos(cont.x, cont.y) == 0) {
+                respuestas.add(cont);
+            }
+        }
+    }
+
+    return respuestas;
+}
 
     /**
      * Desa o actualitza la taula de transposició amb la informació (value, depth, flag)
@@ -470,52 +492,6 @@ public class PlayerMinimax implements IPlayer, IAuto {
     }
 
     /**
-     * Penalitza situacions on les fitxes d'un jugador estan connectades de forma
-     * redundat per múltiples enllaços.
-     *
-     * @param gameState Estat del joc.
-     * @param player Jugador a qui penalitzem.
-     * @return Nombre de redundàncies detectades.
-     */
-    private int penalizarConexionesRedundantes(HexGameStatus gameState, PlayerType player) {
-        ArrayList<Point> fichas = obtenerFichasPropias(gameState, player);
-        int redundantes = 0;
-
-        for (Point ficha : fichas) {
-            if (movimientoRedundante(gameState, ficha, player)) {
-                redundantes++;
-            }
-        }
-        return redundantes;
-    }
-
-    /**
-     * Comprova si una fitxa concreta es troba connectada a més de 3 fitxes del mateix
-     * jugador, considerant-ho "redundant".
-     *
-     * @param gameState Estat del joc.
-     * @param ficha Punt (x,y) de la fitxa.
-     * @param player Jugador de la fitxa.
-     * @return Cert si té més de 3 connexions directes amb fitxes del mateix color.
-     */
-    private boolean movimientoRedundante(HexGameStatus gameState, Point ficha, PlayerType player) {
-        int playerId = playerToId(player);
-        Point[] directions = {
-            new Point(1, 0), new Point(0, 1), new Point(1, -1),
-            new Point(-1, 1), new Point(-1, 0), new Point(0, -1)
-        };
-
-        int conexiones = 0;
-        for (Point d : directions) {
-            Point vecino = new Point(ficha.x + d.x, ficha.y + d.y);
-            if (estaDentro(vecino, gameState.getSize()) && gameState.getPos(vecino.x, vecino.y) == playerId) {
-                conexiones++;
-            }
-        }
-        return conexiones > 3;
-    }
-
-    /**
      * Recupera les celes transitables des de la part esquerra del tauler.
      *
      * @param gameState Estat actual del joc.
@@ -565,8 +541,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
                 pq.add(new Node(f.x, f.y, cost));
             }
         }
-
-        // Moviments hexagonals bàsics
+        
         Point[] directions = {
             new Point(0, 1), new Point(1, 0), new Point(1, -1),
             new Point(0, -1), new Point(-1, 0), new Point(-1, 1)
@@ -661,9 +636,12 @@ public class PlayerMinimax implements IPlayer, IAuto {
      */
     private List<Point> getLegalMoves(HexGameStatus s) {
         List<Point> moves = new ArrayList<>();
+        List<Point> threatResponses = amenazas(s, myColor);
         int size = s.getSize();
         Point center = new Point(size / 2, size / 2);
 
+        moves.addAll(threatResponses);
+        
         for (int i = 0; i < size; i++) {
             for (int j = 0; j < size; j++) {
                 if (s.getPos(i, j) == 0) {
@@ -672,10 +650,12 @@ public class PlayerMinimax implements IPlayer, IAuto {
             }
         }
 
-        // Ordenar moviments per un factor de centralitat invers (descendent)
         moves.sort(Comparator.comparingDouble(move -> -centralityFactor(move, center)));
+
+
         return moves;
     }
+
 
     /**
      * Calcula un factor de centralitat per a la posició p, segons la distància

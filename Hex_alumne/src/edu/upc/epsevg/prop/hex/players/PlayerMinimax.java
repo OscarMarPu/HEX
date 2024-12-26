@@ -21,17 +21,17 @@ import java.util.*;
 public class PlayerMinimax implements IPlayer, IAuto {
 
     // Profunditat màxima de la cerca Minimax.
-    private int profunditat;
-    private String name;
-    private PlayerType myColor;
+    public int profunditat;
+    public String name;
+    public PlayerType myColor;
     //comptador de nodes visitats
-    private long nodesVisited;
-    private static final int MAXIM = 1000000;
+    public long nodesVisited;
+    public static final int MAXIM = 1000000;
     //Indica si fem servir o no IDS.
-    private boolean useIterativeDeepening;
-    private volatile boolean stopSearch;//timeout
-    private Map<Long, TranspositionEntry> transpositionTable;
-    private static long[][] table;
+    public boolean useIterativeDeepening;
+    public volatile boolean stopSearch;//timeout
+    public Map<Long, TranspositionEntry> transpositionTable;
+    public static long[][] table;
 
     /**
      * Constructor principal del jugador Minimax.
@@ -95,7 +95,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
      * @param possibleMoves Llista de moviments legals a explorar.
      * @return El millor moviment trobat.
      */
-    private PlayerMove normalminimax(HexGameStatus s, List<Point> possibleMoves) {
+    public PlayerMove normalminimax(HexGameStatus s, List<Point> possibleMoves) {
         Point bestMove = null;
         int bestValue = Integer.MIN_VALUE;
         int alpha = Integer.MIN_VALUE;
@@ -141,7 +141,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
      * @param baseMoves Moviments legals de base (són els mateixos a cada iteració).
      * @return El millor moviment trobat a la darrera iteració completada.
      */
-    private PlayerMove IDS(HexGameStatus s, List<Point> baseMoves) {
+    public PlayerMove IDS(HexGameStatus s, List<Point> baseMoves) {
         Point bestMoveOverall = null; 
 
         for (int currentDepth = 1; !stopSearch; currentDepth++) {
@@ -216,7 +216,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
      * @param profunditat Profunditat restant de la cerca.
      * @return El millor valor (MAX) trobat per aquest node.
      */
-    private int maxValue(HexGameStatus s, PlayerType currentPlayer, int alpha, int beta, int profunditat) {
+    public int maxValue(HexGameStatus s, PlayerType currentPlayer, int alpha, int beta, int profunditat) {
         nodesVisited++;
         long stateHash = computeHash(s);
         TranspositionEntry ttEntry = transpositionTable.get(stateHash);
@@ -284,7 +284,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
      * @param profunditat Profunditat restant de la cerca.
      * @return El millor valor (MIN) trobat per aquest node.
      */
-    private int minValue(HexGameStatus s, PlayerType currentPlayer, int alpha, int beta, int profunditat) {
+    public int minValue(HexGameStatus s, PlayerType currentPlayer, int alpha, int beta, int profunditat) {
         nodesVisited++;
 
         long stateHash = computeHash(s);
@@ -351,7 +351,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
      * @param evaluatorColor Color del jugador que estem avaluant.
      * @return Valor enter que indica la “bona posició” per al jugador actual.
      */
-    private int evaluate(HexGameStatus s, PlayerType evaluatorColor) {
+    public int evaluate(HexGameStatus s, PlayerType evaluatorColor) {
     if (s.isGameOver()) {
         PlayerType winner = s.GetWinner();
         return (winner == evaluatorColor) ? MAXIM : -MAXIM;
@@ -378,7 +378,7 @@ public class PlayerMinimax implements IPlayer, IAuto {
  * @param player jugador que estem avaluant.
  * @return una llista de les posicions de les respostes a les amenaces.
  */
-private List<Point> amenazas(HexGameStatus s, PlayerType player) {
+public List<Point> amenazas(HexGameStatus s, PlayerType player) {
     List<Point> respuestas = new ArrayList<>();
     List<Point> oponente = obtenerFichasPropias(s, getOpponentColor(player));
 
@@ -413,7 +413,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param beta Valor beta actual.
      * @param bestMove Millor moviment trobat en aquest node.
      */
-    private void storeTT(long stateHash, int depth, int value, int alpha, int beta, Point bestMove) {
+    public void storeTT(long stateHash, int depth, int value, int alpha, int beta, Point bestMove) {
         int flag;
         if (value <= alpha) {
             flag = TranspositionEntry.UPPERBOUND;
@@ -434,7 +434,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param bestMove Millor moviment trobat.
      * @param profunditat Profunditat de la cerca.
      */
-    private void TranspositionTable(long stateHash, int bestValue, Point bestMove, int profunditat) {
+    public void TranspositionTable(long stateHash, int bestValue, Point bestMove, int profunditat) {
         int flag = TranspositionEntry.EXACT;
         TranspositionEntry entry = new TranspositionEntry(bestValue, profunditat, flag, bestMove);
         transpositionTable.put(stateHash, entry);
@@ -447,7 +447,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param player Jugador de qui volem trobar les fitxes.
      * @return Llista de coordenades on hi ha fitxes d'aquest jugador.
      */
-    private ArrayList<Point> obtenerFichasPropias(HexGameStatus gameState, PlayerType player) {
+    public ArrayList<Point> obtenerFichasPropias(HexGameStatus gameState, PlayerType player) {
         ArrayList<Point> fichas = new ArrayList<>();
         int size = gameState.getSize();
         int playerId = playerToId(player);
@@ -469,7 +469,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param size Mida del tauler (n x n).
      * @return Cert si està dins, fals si està fora.
      */
-    private boolean estaDentro(Point p, int size) {
+    public boolean estaDentro(Point p, int size) {
         return p.x >= 0 && p.y >= 0 && p.x < size && p.y < size;
     }
 
@@ -480,7 +480,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param playerId id del jugador.
      * @return Llista de punts transitables que comencen a la fila superior.
      */
-    private List<Point> getTransitableTop(HexGameStatus gameState, int playerId) {
+    public List<Point> getTransitableTop(HexGameStatus gameState, int playerId) {
         List<Point> fuentes = new ArrayList<>();
         int size = gameState.getSize();
         for (int y = 0; y < size; y++) {
@@ -498,7 +498,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param playerId Identificador numèric del jugador (1 o -1).
      * @return Llista de punts transitables.
      */
-    private List<Point> getTransitableLeft(HexGameStatus gameState, int playerId) {
+    public List<Point> getTransitableLeft(HexGameStatus gameState, int playerId) {
         List<Point> fuentes = new ArrayList<>();
         int size = gameState.getSize();
         for (int x = 0; x < size; x++) {
@@ -517,7 +517,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param p Jugador de qui volem la distància a la seva condició de victòria.
      * @return Distància mínima en "caselles" per connectar el seu camí. Si no hi ha camí, valor gran (999999).
      */
-    private int calcularDistanciaMinima(HexGameStatus gameState, PlayerType p) {
+    public int calcularDistanciaMinima(HexGameStatus gameState, PlayerType p) {
         int size = gameState.getSize();
         int playerId = (p == PlayerType.PLAYER1) ? 1 : -1;
 
@@ -584,7 +584,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param playerId 1 per a PLAYER1 o -1 per a PLAYER2.
      * @return 0 si la casella és del jugador, 1 si és buida, Integer.MAX_VALUE si és de l'oponent.
      */
-    private int getCost(HexGameStatus gameState, int x, int y, int playerId) {
+    public int getCost(HexGameStatus gameState, int x, int y, int playerId) {
         int cell = gameState.getPos(x, y);
         if (cell == playerId) return 0;
         if (cell == 0) return 1;
@@ -599,7 +599,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param opponent Jugador rival.
      * @return Un valor negatiu proporcionalment més gran si la distància del rival és més petita.
      */
-    private int bloquearCaminoDelOponente(HexGameStatus gameState, PlayerType opponent) {
+    public int bloquearCaminoDelOponente(HexGameStatus gameState, PlayerType opponent) {
         int distOpponent = calcularDistanciaMinima(gameState, opponent);
         if (distOpponent < 999999) {
             return -(1000 / (distOpponent + 1)); //+1 per evitar dividir entre 0
@@ -613,7 +613,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param player El color del jugador.
      * @return 1 si és PLAYER1, -1 si és PLAYER2.
      */
-    private int playerToId(PlayerType player) {
+    public int playerToId(PlayerType player) {
         return (player == PlayerType.PLAYER1) ? 1 : -1;
     }
 
@@ -623,7 +623,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param color El color actual.
      * @return El color oposat.
      */
-    private PlayerType getOpponentColor(PlayerType color) {
+    public PlayerType getOpponentColor(PlayerType color) {
         return (color == PlayerType.PLAYER1) ? PlayerType.PLAYER2 : PlayerType.PLAYER1;
     }
 
@@ -634,7 +634,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param s Estat del joc.
      * @return Llista de moviments legals, ordenada.
      */
-    private List<Point> getLegalMoves(HexGameStatus s) {
+    public List<Point> getLegalMoves(HexGameStatus s) {
         List<Point> moves = new ArrayList<>();
         List<Point> threatResponses = amenazas(s, myColor);
         int size = s.getSize();
@@ -665,7 +665,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param center Punt central del tauler.
      * @return Un valor positiu més gran si p és a prop del centre.
      */
-    private double centralityFactor(Point p, Point center) {
+    public double centralityFactor(Point p, Point center) {
         return 1.0 / (Math.sqrt(Math.pow(p.x - center.x, 2) + Math.pow(p.y - center.y, 2)) + 1);
     }
 
@@ -676,7 +676,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param move Moviment que volem fer.
      * @return Un nou HexGameStatus resultant d'haver col·locat la fitxa.
      */
-    private HexGameStatus applyMove(HexGameStatus s, Point move) {
+    public HexGameStatus applyMove(HexGameStatus s, Point move) {
         HexGameStatus newState = new HexGameStatus(s);
         newState.placeStone(move);
         return newState;
@@ -688,7 +688,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      *
      * @param size Mida n del tauler (n x n).
      */
-    private void initializeTable(int size) {
+    public void initializeTable(int size) {
         Random rand = new Random(123456789);
         table = new long[size * size][2];
         for (int i = 0; i < size * size; i++) {
@@ -704,7 +704,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * @param s Estat del joc.
      * @return Un long representant l'hash d'aquest estat.
      */
-    private long computeHash(HexGameStatus s) {
+    public long computeHash(HexGameStatus s) {
         long h = 0L;
         int size = s.getSize();
         for (int x = 0; x < size; x++) {
@@ -725,7 +725,7 @@ private List<Point> amenazas(HexGameStatus s, PlayerType player) {
      * Emmagatzema informació de valor, profunditat, flag (EXACT, LOWERBOUND, UPPERBOUND),
      * i el possible millor moviment associat.
      */
-    private static class TranspositionEntry {
+    public static class TranspositionEntry {
         public static final int EXACT = 0;
         public static final int LOWERBOUND = 1;
         public static final int UPPERBOUND = 2;
